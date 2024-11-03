@@ -12,6 +12,12 @@
 		font-family: 'JetBrains Mono', monospace;
 	}
 
+
+	.title {
+		margin-top: 2rem;
+		margin-bottom: 0;
+	}
+
 	.red {
 		color: red;
 	}
@@ -23,15 +29,6 @@
 		background-color: #f8fafc;
 		border-radius: 0.5rem;
 		border: 1px solid #e2e8f0;
-	}
-
-	.info-item {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 0.5rem;
-		background-color: white;
-		border-radius: 0.25rem;
 	}
 
 	.label {
@@ -108,18 +105,18 @@
 		transition: all 0.2s ease;
 	}
 
+	.row-group-section {
+		margin-top: 0.5rem;
+	}
+
 	.file-input::file-selector-button:hover {
 		background-color: #f1f5f9;
 		border-color: #94a3b8;
 	}
 
-	.parquet-info {
-		margin-top: 2rem;
-	}
-
 	.url-input-container {
 		max-width: 800px;
-		margin: 2rem auto;
+		margin: 1rem auto;
 		padding: 0 1rem;
 	}
 
@@ -130,10 +127,10 @@
 
 	.url-input {
 		flex: 1;
-		padding: 0.75rem 1rem;
-		border: 2px solid #e2e8f0;
-		border-radius: 0.5rem;
-		font-size: 1rem;
+		padding: 0.5rem 0.75rem;
+		border: 1px solid #e2e8f0;
+		border-radius: 0.375rem;
+		font-size: 0.9rem;
 		transition: all 0.2s ease;
 		background-color: white;
 		color: #1a202c;
@@ -150,11 +147,11 @@
 	}
 
 	.url-submit {
-		padding: 0.75rem 1.5rem;
+		padding: 0.5rem 1rem;
 		background-color: #3b82f6;
 		color: white;
 		border: none;
-		border-radius: 0.5rem;
+		border-radius: 0.375rem;
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.2s ease;
@@ -169,18 +166,18 @@
 	}
 
 	.error-message {
-		margin-top: 1rem;
-		padding: 1rem;
-		border-radius: 0.5rem;
+		margin-top: 0.5rem;
+		padding: 0.75rem;
+		border-radius: 0.375rem;
 		background-color: #fee2e2;
 		color: #991b1b;
 		border: 1px solid #fecaca;
+		font-size: 0.9rem;
 	}
 
 	.error-help {
-		margin-top: 0.75rem;
-		font-size: 0.9rem;
-		color: #64748b;
+		margin-top: 0.5rem;
+		font-size: 0.85rem;
 	}
 
 	.error-help code {
@@ -194,20 +191,20 @@
 	}
 
 	.error-help ul {
-		margin-top: 0.5rem;
-		padding-left: 1.5rem;
+		margin-top: 0.25rem;
+		padding-left: 1.25rem;
 	}
 
 	.error-help li {
-		margin: 0.25rem 0;
+		margin: 0.15rem 0;
 	}
 
 	.info-container {
 		display: grid;
-		grid-template-columns: minmax(300px, 400px) 1fr;
+		grid-template-columns: minmax(400px, 500px) 1fr;
 		gap: 2rem;
 		max-width: 1200px;
-		margin: 2rem auto;
+		margin: 0rem auto;
 		padding: 0 1rem;
 	}
 
@@ -215,7 +212,7 @@
 		background: white;
 		padding: 1.5rem;
 		border-radius: 0.5rem;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+		box-shadow: 0 0 3px rgba(16, 16, 16, 0.1);
 	}
 
 	.section-header {
@@ -225,16 +222,10 @@
 		margin-bottom: 1rem;
 	}
 
-	.info-grid {
-		display: grid;
-		gap: 0.75rem;
-	}
-
 	.info-item {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 0.5rem 0.75rem;
 		background: #f8fafc;
 		border-radius: 0.375rem;
 	}
@@ -267,13 +258,6 @@
 	}
 
 
-	.schema-section {
-		background: white;
-		padding: 1.5rem;
-		border-radius: 0.5rem;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-	}
-
 	.schema-header {
 		font-size: 1.1rem;
 		font-weight: 600;
@@ -296,12 +280,12 @@
 		background: #f8fafc;
 	}
 
-	.schema-name {
-		font-weight: 500;
-		color: #1a202c;
+	.schema-type {
+		color: #64748b;
+		font-family: monospace;
 	}
 
-	.schema-type {
+	.schema-size {
 		color: #64748b;
 		font-family: monospace;
 	}
@@ -310,6 +294,97 @@
 		.info-container {
 			grid-template-columns: 1fr;
 		}
+	}
+
+	.title {
+		text-align: center;
+	}
+
+	.github-link {
+		color: #333;
+		text-decoration: none;
+		transition: color 0.2s ease;
+		margin-left: 10px;
+	}
+
+	.github-link:hover {
+		color: #666;
+	}
+
+	.github-icon {
+		vertical-align: middle;
+	}
+
+	.option-label {
+		font-size: 0.9rem;
+		color: #64748b;
+		margin-bottom: 0.5rem;
+	}
+
+	.separator {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		position: relative;
+	}
+
+	.or-text {
+		background: white;
+		padding: 0.5rem 1rem;
+		color: #64748b;
+		font-weight: 500;
+	}
+
+	.input-container {
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		/* Changed to accommodate separator */
+		gap: 2rem;
+		max-width: 1200px;
+		margin: 0rem auto;
+		align-items: center;
+	}
+
+	@media (max-width: 768px) {
+		.input-container {
+			grid-template-columns: 1fr;
+			gap: 1rem;
+		}
+
+		.separator {
+			margin: 1rem 0;
+		}
+	}
+
+	.url-input-container form {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.url-input {
+		flex: 1;
+		padding: 0.5rem 0.75rem;
+		border: 1px solid #e2e8f0;
+		border-radius: 0.375rem;
+		font-size: 0.9rem;
+	}
+
+	.url-submit {
+		padding: 0.5rem 1rem;
+		background-color: #3b82f6;
+		color: white;
+		border: none;
+		border-radius: 0.375rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.section-header {
+		font-size: 1rem;
+		font-weight: 500;
+		color: #64748b;
+		margin-bottom: 0.5rem;
 	}
 </style>
 
