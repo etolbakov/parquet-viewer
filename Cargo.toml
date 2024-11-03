@@ -1,0 +1,18 @@
+[package]
+name = "parquet-explorer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arrow = "53.2.0"
+bytes = "1.8.0"
+console_error_panic_hook = "0.1.7"
+leptos = { version = "0.6.15", features = ["csr", "nightly"] }
+parquet = "53.2.0"
+serde_json = "1.0.132"
+wasm-bindgen-futures = "0.4.45"
+web-sys = { version = "0.3.72", features = [
+	"HtmlInputElement",
+	"FileList",
+	"File",
+] }

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>Parquet explorer</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<style>
+	body {
+		font-family: 'JetBrains Mono', monospace;
+	}
+
+	.red {
+		color: red;
+	}
+
+	.info-grid {
+		display: grid;
+		gap: 1rem;
+		padding: 1.5rem;
+		background-color: #f8fafc;
+		border-radius: 0.5rem;
+		border: 1px solid #e2e8f0;
+	}
+
+	.info-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.5rem;
+		background-color: white;
+		border-radius: 0.25rem;
+	}
+
+	.label {
+		font-weight: 500;
+		color: #64748b;
+	}
+
+	.value {
+		font-family: monospace;
+		color: #0f172a;
+	}
+
+	.features {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+		gap: 0.5rem;
+		margin-top: 1rem;
+	}
+
+	.feature {
+		padding: 0.5rem;
+		text-align: center;
+		border-radius: 0.25rem;
+		background-color: #e2e8f0;
+		color: #64748b;
+	}
+
+	.feature.active {
+		background-color: #22c55e;
+		color: white;
+	}
+
+	.file-input-container {
+		margin: 2rem 0;
+		padding: 2rem;
+		border: 2px dashed #e2e8f0;
+		border-radius: 8px;
+		text-align: center;
+		background-color: #f8fafc;
+		transition: all 0.2s ease;
+	}
+
+	.file-input-container:hover {
+		border-color: #94a3b8;
+		background-color: #f1f5f9;
+	}
+
+	.file-input {
+		display: block;
+		width: 100%;
+		max-width: 400px;
+		margin: 0 auto;
+		padding: 0.5rem;
+		cursor: pointer;
+		font-family: 'JetBrains Mono', monospace;
+	}
+
+	.file-input-help {
+		margin-top: 0.5rem;
+		color: #64748b;
+		font-size: 0.9rem;
+	}
+
+	/* Style the file input button */
+	.file-input::file-selector-button {
+		font-family: 'JetBrains Mono', monospace;
+		padding: 0.5rem 1rem;
+		border-radius: 0.25rem;
+		border: 1px solid #e2e8f0;
+		background-color: white;
+		color: #64748b;
+		margin-right: 1rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.file-input::file-selector-button:hover {
+		background-color: #f1f5f9;
+		border-color: #94a3b8;
+	}
+
+	.parquet-info {
+		margin-top: 2rem;
+	}
+
+	.url-input-container {
+		max-width: 800px;
+		margin: 2rem auto;
+		padding: 0 1rem;
+	}
+
+	.url-input-container form {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.url-input {
+		flex: 1;
+		padding: 0.75rem 1rem;
+		border: 2px solid #e2e8f0;
+		border-radius: 0.5rem;
+		font-size: 1rem;
+		transition: all 0.2s ease;
+		background-color: white;
+		color: #1a202c;
+	}
+
+	.url-input:focus {
+		outline: none;
+		border-color: #3b82f6;
+		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+	}
+
+	.url-input::placeholder {
+		color: #94a3b8;
+	}
+
+	.url-submit {
+		padding: 0.75rem 1.5rem;
+		background-color: #3b82f6;
+		color: white;
+		border: none;
+		border-radius: 0.5rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.url-submit:hover {
+		background-color: #2563eb;
+	}
+
+	.url-submit:active {
+		transform: translateY(1px);
+	}
+
+	.error-message {
+		margin-top: 1rem;
+		padding: 1rem;
+		border-radius: 0.5rem;
+		background-color: #fee2e2;
+		color: #991b1b;
+		border: 1px solid #fecaca;
+	}
+
+	.error-help {
+		margin-top: 0.75rem;
+		font-size: 0.9rem;
+		color: #64748b;
+	}
+
+	.error-help code {
+		display: inline-block;
+		padding: 0.2rem 0.4rem;
+		background-color: #f1f5f9;
+		border-radius: 0.25rem;
+		font-size: 0.85rem;
+		color: #0f172a;
+		word-break: break-all;
+	}
+
+	.error-help ul {
+		margin-top: 0.5rem;
+		padding-left: 1.5rem;
+	}
+
+	.error-help li {
+		margin: 0.25rem 0;
+	}
+
+	.info-container {
+		display: grid;
+		grid-template-columns: minmax(300px, 400px) 1fr;
+		gap: 2rem;
+		max-width: 1200px;
+		margin: 2rem auto;
+		padding: 0 1rem;
+	}
+
+	.info-section {
+		background: white;
+		padding: 1.5rem;
+		border-radius: 0.5rem;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+	}
+
+	.section-header {
+		font-size: 1.1rem;
+		font-weight: 600;
+		color: #1a202c;
+		margin-bottom: 1rem;
+	}
+
+	.info-grid {
+		display: grid;
+		gap: 0.75rem;
+	}
+
+	.info-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.5rem 0.75rem;
+		background: #f8fafc;
+		border-radius: 0.375rem;
+	}
+
+	.label {
+		color: #64748b;
+		font-size: 0.9rem;
+	}
+
+	.value {
+		font-weight: 500;
+		color: #1a202c;
+	}
+
+	.features {
+		display: grid;
+		gap: 0.5rem;
+	}
+
+	.feature {
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.375rem;
+		background: #f8fafc;
+		color: #64748b;
+	}
+
+	.feature.active {
+		background: #f0fdf4;
+		color: #166534;
+	}
+
+
+	.schema-section {
+		background: white;
+		padding: 1.5rem;
+		border-radius: 0.5rem;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+	}
+
+	.schema-header {
+		font-size: 1.1rem;
+		font-weight: 600;
+		color: #1a202c;
+		padding-bottom: 1rem;
+		border-bottom: 2px solid #e2e8f0;
+		margin-bottom: 1rem;
+	}
+
+	.schema-grid {
+		display: grid;
+		gap: 0.5rem;
+	}
+
+	.schema-item {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		padding: 0.5rem;
+		border-radius: 0.25rem;
+		background: #f8fafc;
+	}
+
+	.schema-name {
+		font-weight: 500;
+		color: #1a202c;
+	}
+
+	.schema-type {
+		color: #64748b;
+		font-family: monospace;
+	}
+
+	@media (max-width: 768px) {
+		.info-container {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>
+
+<body></body>
+
+</html>
