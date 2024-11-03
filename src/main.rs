@@ -522,9 +522,7 @@ fn RowGroupSection(
                         </div>
                         <div class="info-item">
                             <span class="label">"Statistics"</span>
-                            <span class="value">
-                                {stats_to_string(statistics)}
-                            </span>
+                            <span class="value">{stats_to_string(statistics)}</span>
                         </div>
                     </div>
                 }
@@ -535,8 +533,9 @@ fn RowGroupSection(
 
 #[component]
 fn App() -> impl IntoView {
+    let default_url = "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet";
+    let (url, set_url) = create_signal(default_url.to_string());
     let (file_content, set_file_content) = create_signal(None);
-    let (url, set_url) = create_signal(String::new());
     let (error_message, set_error_message) = create_signal(Option::<String>::None);
 
     let on_file_select = move |ev: web_sys::Event| {
@@ -672,7 +671,12 @@ fn App() -> impl IntoView {
                     <form on:submit=on_url_submit>
                         <input
                             type="url"
-                            placeholder="Parquet file URL (e.g., https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet)"
+                            placeholder="Enter Parquet file URL"
+                            on:focus=move |_| {
+                                if url.get() == default_url {
+                                    set_url.set("".to_string());
+                                }
+                            }
                             on:input=move |ev| {
                                 set_url.set(event_target_value(&ev));
                             }
@@ -680,7 +684,7 @@ fn App() -> impl IntoView {
                             class="url-input"
                         />
                         <button type="submit" class="url-submit">
-                            "Load"
+                            "Load from URL"
                         </button>
                     </form>
                     {move || {
