@@ -1,3 +1,11 @@
+mod schema_section;
+use schema_section::SchemaSection;
+
+mod row_group_section;
+
+mod info_section;
+use info_section::InfoSection;
+
 use std::sync::Arc;
 
 use arrow::datatypes::SchemaRef;
@@ -132,169 +140,6 @@ impl std::fmt::Display for ParquetInfo {
     }
 }
 
-#[component]
-fn SchemaSection(parquet_info: ParquetInfo) -> impl IntoView {
-    let schema = parquet_info.schema.clone();
-    let metadata = parquet_info.metadata.clone();
-    let mut column_info =
-        vec![(0, 0, metadata.row_group(0).column(0).compression()); schema.fields.len()];
-    for rg in metadata.row_groups() {
-        for (i, col) in rg.columns().iter().enumerate() {
-            column_info[i].0 += col.compressed_size() as u64;
-            column_info[i].1 += col.uncompressed_size() as u64;
-            column_info[i].2 = col.compression();
-        }
-    }
-
-    fn format_size(size: u64) -> String {
-        if size > 1_048_576 {
-            // 1MB
-            format!("{:.2} MB", size as f64 / 1_048_576.0)
-        } else if size > 1024 {
-            // 1KB
-            format!("{:.2} KB", size as f64 / 1024.0)
-        } else {
-            format!("{} B", size)
-        }
-    }
-    view! {
-        <div class="info-section">
-            <div class="section-header">"Arrow schema"</div>
-            <div class="schema-grid">
-                {schema
-                    .fields
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, field)| {
-                        let data_type_name = format!("{}", field.data_type());
-                        let output = format!(
-                            "{}/{}",
-                            format_size(column_info[i].0),
-                            format_size(column_info[i].1),
-                        );
-                        view! {
-                            <div class="schema-item">
-                                <span class="label">{format!("{}.{}", i, field.name())}</span>
-                                <span class="schema-type">{data_type_name}</span>
-                                <span class="schema-size">{output}</span>
-                            </div>
-                        }
-                    })
-                    .collect::<Vec<_>>()}
-            </div>
-        </div>
-    }
-}
-
-#[component]
-fn InfoSection(parquet_info: ParquetInfo) -> impl IntoView {
-    let created_by = parquet_info
-        .metadata
-        .file_metadata()
-        .created_by()
-        .unwrap_or("Unknown")
-        .to_string();
-    let version = parquet_info.metadata.file_metadata().version();
-
-    // Create a signal for the selected row group
-    let (selected_row_group, set_selected_row_group) = create_signal(0);
-
-    view! {
-        <div class="info-section">
-            <div class="section-header">"Basic Information"</div>
-            <div class="info-grid">
-                <div class="info-item">
-                    <span class="label">"File size"</span>
-                    <span class="value">
-                        {format!("{:.2} MB", parquet_info.file_size as f64 / 1_048_576.0)}
-                    </span>
-                </div>
-                <div class="info-item">
-                    <span class="label">"Metadata size"</span>
-                    <span class="value">
-                        {format!("{:.2} KB", parquet_info.metadata_len as f64 / 1024.0)}
-                    </span>
-                </div>
-                <div class="info-item">
-                    <span class="label">"Uncompressed size"</span>
-                    <span class="value">
-                        {format!("{:.2} MB", parquet_info.uncompressed_size as f64 / 1_048_576.0)}
-                    </span>
-                </div>
-                <div class="info-item">
-                    <span class="label">"Compression ratio"</span>
-                    <span class="value">
-                        {format!("{:.2}%", parquet_info.compression_ratio * 100.0)}
-                    </span>
-                </div>
-                <div class="info-item">
-                    <span class="label">"Row groups"</span>
-                    <span class="value">{parquet_info.row_group_count}</span>
-                </div>
-                <div class="info-item">
-                    <span class="label">"Total rows"</span>
-                    <span class="value">{format_rows(parquet_info.row_count)}</span>
-                </div>
-                <div class="info-item">
-                    <span class="label">"Columns"</span>
-                    <span class="value">{parquet_info.columns}</span>
-                </div>
-                <div class="info-item">
-                    <span class="label">"Created by"</span>
-                    <span class="value">{created_by}</span>
-                </div>
-                <div class="info-item">
-                    <span class="label">"Version"</span>
-                    <span class="value">{version}</span>
-                </div>
-            </div>
-
-            <RowGroupSection
-                parquet_info=parquet_info.clone()
-                selected_row_group=selected_row_group
-                set_selected_row_group=set_selected_row_group
-            />
-
-            <div class="section-header" style="margin-top: 1.5rem">
-                "Features"
-            </div>
-            <div class="features">
-                <div class="feature".to_owned()
-                    + if parquet_info.has_row_group_stats {
-                        " active"
-                    } else {
-                        ""
-                    }>
-                    {if parquet_info.has_row_group_stats { "✓" } else { "✗" }}
-                    " Row Group Statistics"
-                </div>
-                <div class="feature".to_owned()
-                    + if parquet_info.has_column_index {
-                        " active"
-                    } else {
-                        ""
-                    }>
-                    {if parquet_info.has_column_index { "✓" } else { "✗" }} " Column Index"
-                </div>
-                <div class="feature".to_owned()
-                    + if parquet_info.has_page_index {
-                        " active"
-                    } else {
-                        ""
-                    }>{if parquet_info.has_page_index { "✓" } else { "✗" }} " Page Index"</div>
-                <div class="feature".to_owned()
-                    + if parquet_info.has_bloom_filter {
-                        " active"
-                    } else {
-                        ""
-                    }>
-                    {if parquet_info.has_bloom_filter { "✓" } else { "✗" }} " Bloom Filter"
-                </div>
-            </div>
-        </div>
-    }
-}
-
 fn stats_to_string(stats: Option<Statistics>) -> String {
     match stats {
         Some(stats) => {
@@ -366,168 +211,6 @@ fn stats_to_string(stats: Option<Statistics>) -> String {
             }
         }
         None => "✗".to_string(),
-    }
-}
-
-#[component]
-fn RowGroupSection(
-    parquet_info: ParquetInfo,
-    selected_row_group: ReadSignal<usize>,
-    set_selected_row_group: WriteSignal<usize>,
-) -> impl IntoView {
-    let (selected_column, set_selected_column) = create_signal(0);
-
-    let parquet_info_clone = parquet_info.clone();
-    let row_group_info = move || {
-        let rg = parquet_info_clone
-            .metadata
-            .row_group(selected_row_group.get());
-        let compressed_size = rg.compressed_size() as f64 / 1_048_576.0;
-        let uncompressed_size = rg.total_byte_size() as f64 / 1_048_576.0;
-        let num_rows = rg.num_rows() as u64;
-        let compression = rg.column(0).compression();
-        (compressed_size, uncompressed_size, num_rows, compression)
-    };
-
-    let parquet_info_clone = parquet_info.clone();
-
-    let column_info = move || {
-        let rg = parquet_info_clone
-            .metadata
-            .row_group(selected_row_group.get());
-        let col = rg.column(selected_column.get());
-        let compressed_size = col.compressed_size() as f64 / 1_048_576.0;
-        let uncompressed_size = col.uncompressed_size() as f64 / 1_048_576.0;
-        let compression = col.compression();
-        let statistics = col.statistics().cloned();
-        let has_bloom_filter = col.bloom_filter_offset().is_some();
-        let encodings = col.encodings().clone();
-        (
-            compressed_size,
-            uncompressed_size,
-            compression,
-            statistics,
-            has_bloom_filter,
-            encodings,
-        )
-    };
-
-    view! {
-        <div class="row-group-section">
-
-            <div class="selector">
-                <select
-                    id="row-group-select"
-                    on:change=move |ev| {
-                        set_selected_row_group
-                            .set(event_target_value(&ev).parse::<usize>().unwrap_or(0))
-                    }
-                >
-                    {(0..parquet_info.row_group_count)
-                        .map(|i| {
-                            view! {
-                                <option value=i.to_string()>{format!("Row Group {}", i)}</option>
-                            }
-                        })
-                        .collect::<Vec<_>>()}
-                </select>
-            </div>
-
-            {move || {
-                let (compressed_size, uncompressed_size, num_rows, compression) = row_group_info();
-                view! {
-                    <div class="info-grid">
-                        <div class="info-item">
-                            <span class="label">"Size"</span>
-                            <span class="value">{format!("{:.2} MB", compressed_size)}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">"Uncompressed size"</span>
-                            <span class="value">{format!("{:.2} MB", uncompressed_size)}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">"Compression ratio"</span>
-                            <span class="value">
-                                {format!("{:.2}%", compressed_size / uncompressed_size * 100.0)}
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">"Row count"</span>
-                            <span class="value">{format_rows(num_rows)}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">"Compression"</span>
-                            <span class="value">{format!("{:?}", compression)}</span>
-                        </div>
-                    </div>
-                }
-            }}
-            <div class="selector">
-                <select
-                    id="column-select"
-                    on:change=move |ev| {
-                        set_selected_column
-                            .set(event_target_value(&ev).parse::<usize>().unwrap_or(0))
-                    }
-                >
-                    {parquet_info
-                        .schema
-                        .fields
-                        .iter()
-                        .enumerate()
-                        .map(|(i, field)| {
-                            view! { <option value=i.to_string()>{field.name()}</option> }
-                        })
-                        .collect::<Vec<_>>()}
-                </select>
-            </div>
-            {move || {
-                let (
-                    compressed_size,
-                    uncompressed_size,
-                    compression,
-                    statistics,
-                    has_bloom_filter,
-                    encodings,
-                ) = column_info();
-                view! {
-                    <div class="info-grid">
-                        <div class="info-item">
-                            <span class="label">"Size"</span>
-                            <span class="value">{format!("{:.2} MB", compressed_size)}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">"Uncompressed size"</span>
-                            <span class="value">{format!("{:.2} MB", uncompressed_size)}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">"Compression ratio"</span>
-                            <span class="value">
-                                {format!("{:.2}%", compressed_size / uncompressed_size * 100.0)}
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">"Compression"</span>
-                            <span class="value">{format!("{:?}", compression)}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">"Encodings"</span>
-                            <span class="value">{format!("{:?}", encodings)}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">"Bloom Filter"</span>
-                            <span class="value">
-                                {if has_bloom_filter { "✓" } else { "✗" }}
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">"Statistics"</span>
-                            <span class="value">{stats_to_string(statistics)}</span>
-                        </div>
-                    </div>
-                }
-            }}
-        </div>
     }
 }
 
@@ -636,15 +319,15 @@ fn App() -> impl IntoView {
     };
 
     view! {
-        <div>
-            <h1 class="title">
-                "Parquet Explorer"
+        <div class="container mx-auto px-4 py-8 max-w-6xl">
+            <h1 class="text-3xl font-bold mb-8 flex items-center justify-between">
+                <span>"Parquet Explorer"</span>
                 <a
                     href="https://github.com/XiangpengHao/parquet-explorer"
                     target="_blank"
-                    class="github-link"
+                    class="text-gray-600 hover:text-gray-800"
                 >
-                    <svg height="24" width="24" viewBox="0 0 16 16" class="github-icon">
+                    <svg height="24" width="24" viewBox="0 0 16 16">
                         <path
                             fill="currentColor"
                             d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
@@ -652,83 +335,92 @@ fn App() -> impl IntoView {
                     </svg>
                 </a>
             </h1>
-            <div class="input-container">
-                <div class="file-input-container">
-                    <input
-                        type="file"
-                        accept=".parquet"
-                        on:change=on_file_select
-                        class="file-input"
-                    />
-                    <div class="file-input-help">
-                        "Drop your Parquet file here or click to browse"
+            <div class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center space-y-4">
+                        <div>
+                            <input
+                                type="file"
+                                accept=".parquet"
+                                on:change=on_file_select
+                                id="file-input"
+                            />
+                        </div>
+                        <div>
+                            <label for="file-input" class="cursor-pointer text-gray-600">
+                                "Drop Parquet file or click to browse"
+                            </label>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="text-gray-500">"OR"</div>
+                        <form on:submit=on_url_submit class="flex-1">
+                            <div class="flex space-x-2">
+                                <input
+                                    type="url"
+                                    placeholder="Enter Parquet file URL"
+                                    on:focus=move |ev| {
+                                        let input: web_sys::HtmlInputElement = event_target(&ev);
+                                        input.select();
+                                    }
+                                    on:input=move |ev| {
+                                        set_url.set(event_target_value(&ev));
+                                    }
+                                    prop:value=url
+                                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+                                    "Load from URL"
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
-                <div class="separator">
-                    <span class="or-text">"OR"</span>
-                </div>
-                <div class="url-input-container">
-                    <form on:submit=on_url_submit>
-                        <input
-                            type="url"
-                            placeholder="Enter Parquet file URL"
-                            on:focus=move |ev| {
-                                let input: web_sys::HtmlInputElement = event_target(&ev);
-                                input.select();
-                            }
-                            on:input=move |ev| {
-                                set_url.set(event_target_value(&ev));
-                            }
-                            prop:value=url
-                            class="url-input"
-                        />
-                        <button type="submit" class="url-submit">
-                            "Load from URL"
-                        </button>
-                    </form>
-                    {move || {
-                        error_message
-                            .get()
-                            .map(|msg| {
-                                view! {
-                                    <div class="error-message">
-                                        {msg}
-                                        <div class="error-help">
-                                            "Tip: Try these sources:" <ul>
-                                                <li>
-                                                    "Grid watch data: "
-                                                    <code>
-                                                        "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet"
-                                                    </code>
-                                                </li>
-                                                <li>"Your own S3 bucket with CORS enabled"</li>
-                                                <li>
-                                                    "Or download the file and use the file picker above"
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </div>
-                                }
-                            })
-                    }}
-                </div>
-            </div>
-            <div class="parquet-info">
+
                 {move || {
-                    let info = file_content.get();
-                    match info {
-                        Some(info) => {
+                    error_message
+                        .get()
+                        .map(|msg| {
                             view! {
-                                <div class="info-container">
-                                    <InfoSection parquet_info=info.clone() />
-                                    <SchemaSection parquet_info=info.clone() />
+                                <div class="bg-red-50 border-l-4 border-red-500 p-4 my-4">
+                                    <div class="text-red-700">{msg}</div>
+                                    <div class="mt-2 text-sm text-gray-600">
+                                        "Tip: Try these sources:"
+                                        <ul class="list-disc ml-6 mt-2 space-y-1">
+                                            <li>
+                                                "Grid watch data: "
+                                                <code class="bg-gray-100 px-1 rounded">
+                                                    "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet"
+                                                </code>
+                                            </li>
+                                            <li>"Your own S3 bucket with CORS enabled"</li>
+                                            <li>"Or download the file and use the file picker above"</li>
+                                        </ul>
+                                    </div>
                                 </div>
                             }
-                                .into_view()
-                        }
-                        None => view! { <div class="error">"No file selected"</div> }.into_view(),
-                    }
+                        })
                 }}
+
+                <div class="mt-8">
+                    {move || {
+                        let info = file_content.get();
+                        match info {
+                            Some(info) => {
+                                view! {
+                                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        <InfoSection parquet_info=info.clone() />
+                                        <SchemaSection parquet_info=info.clone() />
+                                    </div>
+                                }
+                                .into_view()
+                            }
+                            None => view! {
+                                <div class="text-center text-gray-500 py-8">"No file selected"</div>
+                            }.into_view(),
+                        }
+                    }}
+                </div>
             </div>
         </div>
     }
