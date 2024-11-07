@@ -8,11 +8,13 @@ use info::InfoSection;
 
 use std::sync::Arc;
 
-use arrow::datatypes::SchemaRef;
+use arrow::{datatypes::SchemaRef, util::pretty::pretty_format_batches};
 use bytes::Bytes;
+use datafusion::datasource::MemTable;
+use datafusion::prelude::*;
 use leptos::*;
 use parquet::{
-    arrow::parquet_to_arrow_schema,
+    arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, parquet_to_arrow_schema},
     errors::ParquetError,
     file::{
         metadata::{ParquetMetaData, ParquetMetaDataReader},
@@ -235,13 +237,16 @@ fn App() -> impl IntoView {
     let (url, set_url) = create_signal(default_url.to_string());
     let (file_content, set_file_content) = create_signal(None);
     let (error_message, set_error_message) = create_signal(Option::<String>::None);
+    let (file_bytes, set_file_bytes) = create_signal(None::<Bytes>);
+    let (sql_query, set_sql_query) = create_signal(String::new());
+    let (query_result, set_query_result) = create_signal(None::<String>);
 
     let on_file_select = move |ev: web_sys::Event| {
         let input: web_sys::HtmlInputElement = event_target(&ev);
         let files = input.files().unwrap();
         let file = files.get(0).unwrap();
 
-        const MAX_SIZE: f64 = 20.0 * 1024.0 * 1024.0; // 20MB in bytes
+        const MAX_SIZE: f64 = 20.0 * 1024.0 * 1024.0 * 100.0; // 20MB in bytes
         let file_size = file.size();
         let start = if file_size > MAX_SIZE {
             file_size - MAX_SIZE
@@ -258,13 +263,14 @@ fn App() -> impl IntoView {
             let result = file_reader_clone.result().unwrap();
             let array_buffer = result.dyn_into::<js_sys::ArrayBuffer>().unwrap();
             let uint8_array = js_sys::Uint8Array::new(&array_buffer);
-            let bytes = uint8_array.to_vec();
-            let parquet_info = get_parquet_info(bytes::Bytes::from(bytes));
+            let bytes = bytes::Bytes::from(uint8_array.to_vec());
+            let parquet_info = get_parquet_info(bytes.clone());
 
             match parquet_info {
                 Ok(info) => {
                     web_sys::console::log_1(&info.to_string().into());
                     file_content_setter.set(Some(info));
+                    set_file_bytes.set(Some(bytes.clone()));
                 }
                 Err(_e) => {
                     file_content_setter.set(None);
@@ -319,18 +325,59 @@ fn App() -> impl IntoView {
 
             let array_buffer = JsFuture::from(resp.array_buffer().unwrap()).await.unwrap();
             let uint8_array = js_sys::Uint8Array::new(&array_buffer);
-            let bytes = uint8_array.to_vec();
+            let bytes = bytes::Bytes::from(uint8_array.to_vec());
 
-            let parquet_info = get_parquet_info(bytes::Bytes::from(bytes));
+            let parquet_info = get_parquet_info(bytes.clone());
             match parquet_info {
                 Ok(info) => {
                     set_file_content.set(Some(info));
+                    set_file_bytes.set(Some(bytes.clone()));
                 }
                 Err(_) => {
                     set_file_content.set(None);
                 }
             }
         });
+    };
+
+    let run_query = move |_ev: web_sys::MouseEvent| {
+        let query = sql_query.get();
+        let bytes_opt = file_bytes.get();
+        if query.trim().is_empty() {
+            set_error_message.set(Some("Please enter a SQL query.".into()));
+            return;
+        }
+        if let Some(bytes) = bytes_opt {
+            wasm_bindgen_futures::spawn_local(async move {
+                // Initialize DataFusion context
+                let ctx = SessionContext::new();
+
+                // Create a MemTable from Parquet bytes
+                let parquet_builder = ParquetRecordBatchReaderBuilder::try_new(bytes).unwrap();
+                let reader = parquet_builder.build().unwrap();
+
+                let mut record_batches = Vec::new();
+
+                for record in reader {
+                    record_batches.push(record.unwrap());
+                }
+                let schema = record_batches[0].schema();
+                let mem_table = MemTable::try_new(schema, vec![record_batches]).unwrap();
+                ctx.register_table("uploaded", Arc::new(mem_table)).unwrap();
+
+                // Execute the SQL query
+                let df = ctx.sql(&query).await.unwrap();
+                let results = df.collect().await.unwrap();
+
+                // Format the results as a string
+                set_query_result.set(Some(format!(
+                    "{}",
+                    pretty_format_batches(&results).unwrap()
+                )));
+            });
+        } else {
+            set_error_message.set(Some("No Parquet file loaded.".into()));
+        };
     };
 
     view! {
@@ -440,6 +487,32 @@ fn App() -> impl IntoView {
                         }
                     }}
                 </div>
+
+                <div class="mt-4">
+                    <input
+                        type="text"
+                        placeholder="Enter SQL query"
+                        on:input=move |ev| set_sql_query(event_target_value(&ev))
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                        on:click=run_query
+                        class="mt-2 px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
+                    >
+                        "Run Query"
+                    </button>
+                </div>
+
+                {move || {
+                    query_result.get().map(|res| {
+                        view! {
+                            <div class="mt-4 p-4 bg-gray-100 rounded-md">
+                                <h2 class="text-xl font-semibold mb-2">"Query Results"</h2>
+                                <pre class="whitespace-pre-wrap">{ res }</pre>
+                            </div>
+                        }
+                    })
+                }}
             </div>
         </div>
     }

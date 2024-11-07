@@ -7,8 +7,11 @@ edition = "2021"
 arrow = "53.2.0"
 bytes = "1.8.0"
 console_error_panic_hook = "0.1.7"
+datafusion = { version = "42.2.0", default-features = false, features = [
+	"parquet",
+] }
 leptos = { version = "0.6.15", features = ["csr", "nightly"] }
-parquet = "53.2.0"
+parquet = { version = "53.2.0", features = ["arrow"] }
 serde_json = "1.0.132"
 wasm-bindgen-futures = "0.4.45"
 web-sys = { version = "0.3.72", features = [
@@ -16,3 +19,16 @@ web-sys = { version = "0.3.72", features = [
 	"FileList",
 	"File",
 ] }
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = 'z'
+lto = true
+codegen-units = 1
+
+[package.metadata.leptos]
+lib-profile-release = "wasm-release"
+
+# https://github.com/Amanieu/parking_lot/issues/269
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+parking_lot_core = "=0.8.0"
