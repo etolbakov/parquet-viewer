@@ -193,7 +193,22 @@ fn stats_to_string(stats: Option<Statistics>) -> String {
                         parts.push(format!("max: {:.2}", max));
                     }
                 }
-                _ => {}
+                Statistics::ByteArray(s) => {
+                    s.min_opt()
+                        .and_then(|min| min.as_utf8().ok())
+                        .map(|min_utf8| parts.push(format!("min: {:?}", min_utf8)));
+                    s.max_opt()
+                        .and_then(|max| max.as_utf8().ok())
+                        .map(|max_utf8| parts.push(format!("max: {:?}", max_utf8)));
+                }
+                Statistics::FixedLenByteArray(s) => {
+                    s.min_opt()
+                        .and_then(|min| min.as_utf8().ok())
+                        .map(|min_utf8| parts.push(format!("min: {:?}", min_utf8)));
+                    s.max_opt()
+                        .and_then(|max| max.as_utf8().ok())
+                        .map(|max_utf8| parts.push(format!("max: {:?}", max_utf8)));
+                }
             }
 
             if let Some(null_count) = stats.null_count_opt() {
@@ -408,9 +423,13 @@ fn App() -> impl IntoView {
                         match info {
                             Some(info) => {
                                 view! {
-                                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                        <InfoSection parquet_info=info.clone() />
-                                        <SchemaSection parquet_info=info.clone() />
+                                    <div class="flex gap-6">
+                                        <div class="w-96 flex-none">
+                                            <InfoSection parquet_info=info.clone() />
+                                        </div>
+                                        <div class="flex-1">
+                                            <SchemaSection parquet_info=info.clone() />
+                                        </div>
                                     </div>
                                 }
                                 .into_view()

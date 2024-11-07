@@ -16,7 +16,7 @@ pub fn InfoSection(parquet_info: super::ParquetInfo) -> impl IntoView {
     view! {
         <div class="bg-white rounded-lg shadow-md p-6">
             <h2 class="text-xl font-semibold mb-4">"Basic Information"</h2>
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md mb-8">
                 <div class="space-y-2">
                     <span class="text-gray-600 text-sm">"File size"</span>
                     <span class="block font-medium">
