@@ -1,4 +1,5 @@
 mod schema;
+use datafusion::physical_plan::collect;
 use query_results::QueryResults;
 use schema::SchemaSection;
 
@@ -337,7 +338,7 @@ fn App() -> impl IntoView {
             let parquet_info = get_parquet_info(bytes.clone());
             match parquet_info {
                 Ok(info) => {
-                    set_file_content.set(Some(info));
+                    set_file_content.set(Some(info.clone()));
                     set_file_bytes.set(Some(bytes.clone()));
                 }
                 Err(_) => {
@@ -357,8 +358,6 @@ fn App() -> impl IntoView {
         }
         if let Some(bytes) = bytes_opt {
             wasm_bindgen_futures::spawn_local(async move {
-                // Initialize DataFusion context
-
                 web_sys::console::log_1(&table_name.clone().into());
                 let ctx = datafusion::prelude::SessionContext::new();
 
@@ -366,21 +365,33 @@ fn App() -> impl IntoView {
                 let parquet_builder = ParquetRecordBatchReaderBuilder::try_new(bytes).unwrap();
                 let reader = parquet_builder.build().unwrap();
 
+                let schema = file_content.get().unwrap().schema.clone();
+
                 let mut results = Vec::new();
 
                 for record in reader {
                     results.push(record.unwrap());
                 }
-                let schema = results[0].schema();
+
                 let mem_table =
-                    datafusion::datasource::MemTable::try_new(schema, vec![results]).unwrap();
+                    datafusion::datasource::memory::MemTable::try_new(schema, vec![results])
+                        .unwrap();
                 ctx.register_table(table_name, Arc::new(mem_table)).unwrap();
 
                 // Execute the SQL query
-                let df = ctx.sql(&query).await.unwrap();
-                let results = df.collect().await.unwrap();
 
-                // Format the results as a string
+                let plan = ctx.sql(&query).await.expect("Error generating plan");
+                let (state, plan) = plan.into_parts();
+                let plan = state.optimize(&plan).expect("Error optimizing plan");
+                let physical_plan = state
+                    .create_physical_plan(&plan)
+                    .await
+                    .expect("Error creating physical plan");
+
+                let results = collect(physical_plan, ctx.task_ctx().clone())
+                    .await
+                    .unwrap();
+
                 set_query_result.set(results);
             });
         } else {
@@ -541,7 +552,7 @@ fn App() -> impl IntoView {
                                         <div class="w-96 flex-none">
                                             <InfoSection parquet_info=info.clone() />
                                         </div>
-                                        <div class="flex-1">
+                                        <div class="w-96 flex-1">
                                             <SchemaSection parquet_info=info.clone() />
                                         </div>
                                     </div>

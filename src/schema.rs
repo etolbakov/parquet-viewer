@@ -105,9 +105,9 @@ pub fn SchemaSection(parquet_info: super::ParquetInfo) -> impl IntoView {
     }
 
     view! {
-        <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="bg-white rounded-lg shadow-md p-6 flex-1 overflow-auto">
             <h2 class="text-xl font-semibold mb-4">"Arrow Schema"</h2>
-            <table class="min-w-full">
+            <table class="min-w-full table-fixed">
                 <thead>
                     <tr class="bg-gray-50">
                         <th

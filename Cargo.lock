@@ -1913,6 +1913,7 @@ dependencies = [
  "bytes",
  "chrono",
  "flate2",
+ "futures",
  "half",
  "hashbrown 0.14.5",
  "lz4_flex",
@@ -1922,6 +1923,7 @@ dependencies = [
  "seq-macro",
  "snap",
  "thrift",
+ "tokio",
  "twox-hash",
 ]
 
@@ -1936,6 +1938,7 @@ dependencies = [
  "chrono",
  "console_error_panic_hook",
  "datafusion",
+ "futures",
  "leptos",
  "parquet",
  "serde_json",
