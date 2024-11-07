@@ -1,10 +1,10 @@
-mod schema_section;
-use schema_section::SchemaSection;
+mod schema;
+use schema::SchemaSection;
 
-mod row_group_section;
+mod row_group;
 
-mod info_section;
-use info_section::InfoSection;
+mod info;
+use info::InfoSection;
 
 use std::sync::Arc;
 

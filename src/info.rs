@@ -63,7 +63,7 @@ pub fn InfoSection(parquet_info: super::ParquetInfo) -> impl IntoView {
                 </div>
             </div>
 
-            <super::row_group_section::RowGroupSection
+            <super::row_group::RowGroupSection
                 parquet_info=parquet_info.clone()
                 selected_row_group=selected_row_group
                 set_selected_row_group=set_selected_row_group
