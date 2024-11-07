@@ -63,7 +63,9 @@ pub fn RowGroupSection(
                         {(0..parquet_info.row_group_count)
                             .map(|i| {
                                 view! {
-                                    <option value=i.to_string() class="py-2">{format!("{}", i)}</option>
+                                    <option value=i.to_string() class="py-2">
+                                        {format!("{}", i)}
+                                    </option>
                                 }
                             })
                             .collect::<Vec<_>>()}
@@ -76,11 +78,15 @@ pub fn RowGroupSection(
                         <div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md">
                             <div class="space-y-1">
                                 <div class="text-sm text-gray-500">"Size"</div>
-                                <div class="font-medium">{format!("{:.2} MB", compressed_size)}</div>
+                                <div class="font-medium">
+                                    {format!("{:.2} MB", compressed_size)}
+                                </div>
                             </div>
                             <div class="space-y-1">
                                 <div class="text-sm text-gray-500">"Uncompressed"</div>
-                                <div class="font-medium">{format!("{:.2} MB", uncompressed_size)}</div>
+                                <div class="font-medium">
+                                    {format!("{:.2} MB", uncompressed_size)}
+                                </div>
                             </div>
                             <div class="space-y-1">
                                 <div class="text-sm text-gray-500">"Compression"</div>
@@ -121,7 +127,11 @@ pub fn RowGroupSection(
                             .iter()
                             .enumerate()
                             .map(|(i, field)| {
-                                view! { <option value=i.to_string() class="py-2">{field.name()}</option> }
+                                view! {
+                                    <option value=i.to_string() class="py-2">
+                                        {field.name()}
+                                    </option>
+                                }
                             })
                             .collect::<Vec<_>>()}
                     </select>
@@ -140,11 +150,15 @@ pub fn RowGroupSection(
                         <div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md">
                             <div class="space-y-1">
                                 <div class="text-sm text-gray-500">"Size"</div>
-                                <div class="font-medium">{format!("{:.2} MB", compressed_size)}</div>
+                                <div class="font-medium">
+                                    {format!("{:.2} MB", compressed_size)}
+                                </div>
                             </div>
                             <div class="space-y-1">
                                 <div class="text-sm text-gray-500">"Uncompressed"</div>
-                                <div class="font-medium">{format!("{:.2} MB", uncompressed_size)}</div>
+                                <div class="font-medium">
+                                    {format!("{:.2} MB", uncompressed_size)}
+                                </div>
                             </div>
                             <div class="space-y-1">
                                 <div class="text-sm text-gray-500">"Compression"</div>
@@ -168,7 +182,9 @@ pub fn RowGroupSection(
                             </div>
                             <div class="col-span-2 space-y-1">
                                 <div class="text-sm text-gray-500">"Statistics"</div>
-                                <div class="font-medium text-sm">{super::stats_to_string(statistics)}</div>
+                                <div class="font-medium text-sm">
+                                    {super::stats_to_string(statistics)}
+                                </div>
                             </div>
                         </div>
                     }

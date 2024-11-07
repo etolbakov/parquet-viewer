@@ -47,7 +47,9 @@ pub fn InfoSection(parquet_info: super::ParquetInfo) -> impl IntoView {
                 </div>
                 <div class="space-y-2">
                     <span class="text-gray-600 text-sm">"Total rows"</span>
-                    <span class="block font-medium">{super::format_rows(parquet_info.row_count)}</span>
+                    <span class="block font-medium">
+                        {super::format_rows(parquet_info.row_count)}
+                    </span>
                 </div>
                 <div class="space-y-2">
                     <span class="text-gray-600 text-sm">"Columns"</span>
@@ -71,35 +73,35 @@ pub fn InfoSection(parquet_info: super::ParquetInfo) -> impl IntoView {
 
             <h2 class="text-xl font-semibold mt-6 mb-4">"Features"</h2>
             <div class="grid grid-cols-2 gap-2">
-                <div class={"p-2 rounded ".to_owned() +
-                    if parquet_info.has_row_group_stats {
+                <div class="p-2 rounded ".to_owned()
+                    + if parquet_info.has_row_group_stats {
                         "bg-green-100 text-green-800"
                     } else {
                         "bg-gray-100 text-gray-800"
-                    }}>
+                    }>
                     {if parquet_info.has_row_group_stats { "✓" } else { "✗" }}
                     " Row Group Statistics"
                 </div>
-                <div class={"p-2 rounded ".to_owned() +
-                    if parquet_info.has_column_index {
+                <div class="p-2 rounded ".to_owned()
+                    + if parquet_info.has_column_index {
                         "bg-green-100 text-green-800"
                     } else {
                         "bg-gray-100 text-gray-800"
-                    }}>
+                    }>
                     {if parquet_info.has_column_index { "✓" } else { "✗" }} " Column Index"
                 </div>
-                <div class={"p-2 rounded ".to_owned() +
-                    if parquet_info.has_page_index {
+                <div class="p-2 rounded ".to_owned()
+                    + if parquet_info.has_page_index {
                         "bg-green-100 text-green-800"
                     } else {
                         "bg-gray-100 text-gray-800"
-                    }}>{if parquet_info.has_page_index { "✓" } else { "✗" }} " Page Index"</div>
-                <div class={"p-2 rounded ".to_owned() +
-                    if parquet_info.has_bloom_filter {
+                    }>{if parquet_info.has_page_index { "✓" } else { "✗" }} " Page Index"</div>
+                <div class="p-2 rounded ".to_owned()
+                    + if parquet_info.has_bloom_filter {
                         "bg-green-100 text-green-800"
                     } else {
                         "bg-gray-100 text-gray-800"
-                    }}>
+                    }>
                     {if parquet_info.has_bloom_filter { "✓" } else { "✗" }} " Bloom Filter"
                 </div>
             </div>

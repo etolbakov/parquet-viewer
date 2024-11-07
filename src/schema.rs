@@ -110,25 +110,69 @@ pub fn SchemaSection(parquet_info: super::ParquetInfo) -> impl IntoView {
             <table class="min-w-full">
                 <thead>
                     <tr class="bg-gray-50">
-                        <th class="px-4 py-2 cursor-pointer hover:bg-gray-100" on:click=move |_| sort_by(SortField::Id)>"ID"</th>
-                        <th class="px-4 py-2 cursor-pointer hover:bg-gray-100" on:click=move |_| sort_by(SortField::Name)>"Name"</th>
-                        <th class="px-4 py-2 cursor-pointer hover:bg-gray-100" on:click=move |_| sort_by(SortField::DataType)>"Type"</th>
-                        <th class="px-4 py-2 cursor-pointer hover:bg-gray-100" on:click=move |_| sort_by(SortField::CompressedSize)>"Compressed"</th>
-                        <th class="px-4 py-2 cursor-pointer hover:bg-gray-100" on:click=move |_| sort_by(SortField::UncompressedSize)>"Uncompressed"</th>
-                        <th class="px-4 py-2 cursor-pointer hover:bg-gray-100" on:click=move |_| sort_by(SortField::CompressionRatio)>"Ratio"</th>
+                        <th
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            on:click=move |_| sort_by(SortField::Id)
+                        >
+                            "ID"
+                        </th>
+                        <th
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            on:click=move |_| sort_by(SortField::Name)
+                        >
+                            "Name"
+                        </th>
+                        <th
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            on:click=move |_| sort_by(SortField::DataType)
+                        >
+                            "Type"
+                        </th>
+                        <th
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            on:click=move |_| sort_by(SortField::CompressedSize)
+                        >
+                            "Compressed"
+                        </th>
+                        <th
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            on:click=move |_| sort_by(SortField::UncompressedSize)
+                        >
+                            "Uncompressed"
+                        </th>
+                        <th
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            on:click=move |_| sort_by(SortField::CompressionRatio)
+                        >
+                            "Ratio"
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
-                    {move || column_data.get().into_iter().map(|col| view! {
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-2 text-gray-700">{col.id}</td>
-                            <td class="px-4 py-2 text-gray-700">{col.name}</td>
-                            <td class="px-4 py-2 text-gray-500">{col.data_type}</td>
-                            <td class="px-4 py-2 text-gray-500">{format_size(col.compressed_size)}</td>
-                            <td class="px-4 py-2 text-gray-500">{format_size(col.uncompressed_size)}</td>
-                            <td class="px-4 py-2 text-gray-500">{format!("{:.2}%", col.compression_ratio * 100.0)}</td>
-                        </tr>
-                    }).collect::<Vec<_>>()}
+                    {move || {
+                        column_data
+                            .get()
+                            .into_iter()
+                            .map(|col| {
+                                view! {
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-2 text-gray-700">{col.id}</td>
+                                        <td class="px-4 py-2 text-gray-700">{col.name}</td>
+                                        <td class="px-4 py-2 text-gray-500">{col.data_type}</td>
+                                        <td class="px-4 py-2 text-gray-500">
+                                            {format_size(col.compressed_size)}
+                                        </td>
+                                        <td class="px-4 py-2 text-gray-500">
+                                            {format_size(col.uncompressed_size)}
+                                        </td>
+                                        <td class="px-4 py-2 text-gray-500">
+                                            {format!("{:.2}%", col.compression_ratio * 100.0)}
+                                        </td>
+                                    </tr>
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    }}
                 </tbody>
             </table>
         </div>

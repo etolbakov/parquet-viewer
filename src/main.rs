@@ -1,6 +1,8 @@
 mod schema;
+use query_results::QueryResults;
 use schema::SchemaSection;
 
+mod query_results;
 mod row_group;
 
 mod info;
@@ -8,10 +10,8 @@ use info::InfoSection;
 
 use std::sync::Arc;
 
-use arrow::{datatypes::SchemaRef, util::pretty::pretty_format_batches};
+use arrow::datatypes::SchemaRef;
 use bytes::Bytes;
-use datafusion::datasource::MemTable;
-use datafusion::prelude::*;
 use leptos::*;
 use parquet::{
     arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, parquet_to_arrow_schema},
@@ -239,21 +239,13 @@ fn App() -> impl IntoView {
     let (error_message, set_error_message) = create_signal(Option::<String>::None);
     let (file_bytes, set_file_bytes) = create_signal(None::<Bytes>);
     let (sql_query, set_sql_query) = create_signal(String::new());
-    let (query_result, set_query_result) = create_signal(None::<String>);
+    let (query_result, set_query_result) = create_signal(Vec::<arrow::array::RecordBatch>::new());
+    let (file_name, set_file_name) = create_signal(String::from("uploaded"));
 
     let on_file_select = move |ev: web_sys::Event| {
         let input: web_sys::HtmlInputElement = event_target(&ev);
         let files = input.files().unwrap();
         let file = files.get(0).unwrap();
-
-        const MAX_SIZE: f64 = 20.0 * 1024.0 * 1024.0 * 100.0; // 20MB in bytes
-        let file_size = file.size();
-        let start = if file_size > MAX_SIZE {
-            file_size - MAX_SIZE
-        } else {
-            0.0
-        };
-        let blob = file.slice_with_f64_and_f64(start, file_size).unwrap();
 
         let file_reader = web_sys::FileReader::new().unwrap();
         let file_content_setter = set_file_content.clone();
@@ -279,14 +271,29 @@ fn App() -> impl IntoView {
         }) as Box<dyn FnMut(_)>);
 
         file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
-        file_reader.read_as_array_buffer(&blob).unwrap();
+        file_reader.read_as_array_buffer(&file).unwrap();
         onload.forget();
+        let table_name = file
+            .name()
+            .strip_suffix(".parquet")
+            .unwrap_or(&file.name())
+            .to_string();
+        set_file_name.set(table_name);
     };
 
     let on_url_submit = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
         let url_str = url.get();
         set_error_message.set(None); // Clear previous errors
+
+        let table_name = url_str
+            .split('/')
+            .last()
+            .unwrap_or("uploaded.parquet")
+            .strip_suffix(".parquet")
+            .unwrap_or("uploaded")
+            .to_string();
+        set_file_name.set(table_name);
 
         wasm_bindgen_futures::spawn_local(async move {
             let opts = web_sys::RequestInit::new();
@@ -340,9 +347,10 @@ fn App() -> impl IntoView {
         });
     };
 
-    let run_query = move |_ev: web_sys::MouseEvent| {
+    let execute_query = move || {
         let query = sql_query.get();
         let bytes_opt = file_bytes.get();
+        let table_name = file_name.get();
         if query.trim().is_empty() {
             set_error_message.set(Some("Please enter a SQL query.".into()));
             return;
@@ -350,34 +358,38 @@ fn App() -> impl IntoView {
         if let Some(bytes) = bytes_opt {
             wasm_bindgen_futures::spawn_local(async move {
                 // Initialize DataFusion context
-                let ctx = SessionContext::new();
+
+                web_sys::console::log_1(&table_name.clone().into());
+                let ctx = datafusion::prelude::SessionContext::new();
 
                 // Create a MemTable from Parquet bytes
                 let parquet_builder = ParquetRecordBatchReaderBuilder::try_new(bytes).unwrap();
                 let reader = parquet_builder.build().unwrap();
 
-                let mut record_batches = Vec::new();
+                let mut results = Vec::new();
 
                 for record in reader {
-                    record_batches.push(record.unwrap());
+                    results.push(record.unwrap());
                 }
-                let schema = record_batches[0].schema();
-                let mem_table = MemTable::try_new(schema, vec![record_batches]).unwrap();
-                ctx.register_table("uploaded", Arc::new(mem_table)).unwrap();
+                let schema = results[0].schema();
+                let mem_table =
+                    datafusion::datasource::MemTable::try_new(schema, vec![results]).unwrap();
+                ctx.register_table(table_name, Arc::new(mem_table)).unwrap();
 
                 // Execute the SQL query
                 let df = ctx.sql(&query).await.unwrap();
                 let results = df.collect().await.unwrap();
 
                 // Format the results as a string
-                set_query_result.set(Some(format!(
-                    "{}",
-                    pretty_format_batches(&results).unwrap()
-                )));
+                set_query_result.set(results);
             });
         } else {
             set_error_message.set(Some("No Parquet file loaded.".into()));
         };
+    };
+
+    let run_query = move |_ev: web_sys::MouseEvent| {
+        execute_query();
     };
 
     view! {
@@ -431,7 +443,10 @@ fn App() -> impl IntoView {
                                     prop:value=url
                                     class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
-                                <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+                                <button
+                                    type="submit"
+                                    class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                                >
                                     "Load from URL"
                                 </button>
                             </div>
@@ -456,12 +471,64 @@ fn App() -> impl IntoView {
                                                 </code>
                                             </li>
                                             <li>"Your own S3 bucket with CORS enabled"</li>
-                                            <li>"Or download the file and use the file picker above"</li>
+                                            <li>
+                                                "Or download the file and use the file picker above"
+                                            </li>
                                         </ul>
                                     </div>
                                 </div>
                             }
                         })
+                }}
+                <div class="mt-4">
+                    {move || {
+                        file_bytes
+                            .get()
+                            .map(|_| {
+                                view! {
+                                    <div class="flex gap-2 items-center">
+                                        <input
+                                            type="text"
+                                            placeholder=move || {
+                                                format!("select * from \"{}\" limit 10", file_name.get())
+                                            }
+                                            prop:value=sql_query
+                                            on:input=move |ev| set_sql_query(event_target_value(&ev))
+                                            on:dblclick=move |_| {
+                                                if sql_query.get().trim().is_empty() {
+                                                    set_sql_query(format!("select * from \"{}\" limit 10", file_name.get()))
+                                                }
+                                            }
+                                            on:keydown=move |ev| {
+                                                if ev.key() == "Enter" {
+                                                    execute_query();
+                                                }
+                                            }
+                                            class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <button
+                                            on:click=run_query
+                                            class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 whitespace-nowrap"
+                                        >
+                                            "Run Query"
+                                        </button>
+                                    </div>
+                                }
+                            })
+                    }}
+                </div>
+
+                {move || {
+                    let result = query_result.get();
+                    if result.is_empty() {
+                        return view! {
+                        }.into_view();
+                    } else {
+                        view! {
+                            <QueryResults query_result=result />
+                        }
+                        .into_view()
+                    }
                 }}
 
                 <div class="mt-8">
@@ -479,40 +546,20 @@ fn App() -> impl IntoView {
                                         </div>
                                     </div>
                                 }
-                                .into_view()
+                                    .into_view()
                             }
-                            None => view! {
-                                <div class="text-center text-gray-500 py-8">"No file selected"</div>
-                            }.into_view(),
+                            None => {
+                                view! {
+                                    <div class="text-center text-gray-500 py-8">
+                                        "No file selected"
+                                    </div>
+                                }
+                                    .into_view()
+                            }
                         }
                     }}
                 </div>
 
-                <div class="mt-4">
-                    <input
-                        type="text"
-                        placeholder="Enter SQL query"
-                        on:input=move |ev| set_sql_query(event_target_value(&ev))
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                        on:click=run_query
-                        class="mt-2 px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
-                    >
-                        "Run Query"
-                    </button>
-                </div>
-
-                {move || {
-                    query_result.get().map(|res| {
-                        view! {
-                            <div class="mt-4 p-4 bg-gray-100 rounded-md">
-                                <h2 class="text-xl font-semibold mb-2">"Query Results"</h2>
-                                <pre class="whitespace-pre-wrap">{ res }</pre>
-                            </div>
-                        }
-                    })
-                }}
             </div>
         </div>
     }
