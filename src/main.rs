@@ -1,7 +1,11 @@
 mod schema;
 use datafusion::{
+    error::DataFusionError,
+    execution::{SendableRecordBatchStream, TaskContext},
     logical_expr::LogicalPlan,
-    physical_plan::{collect, ExecutionPlan},
+    physical_plan::{
+        collect, stream::RecordBatchStreamAdapter, streaming::PartitionStream, ExecutionPlan,
+    },
 };
 use query_results::QueryResults;
 use schema::SchemaSection;
@@ -235,6 +239,29 @@ fn stats_to_string(stats: Option<Statistics>) -> String {
     }
 }
 
+use futures::StreamExt;
+#[derive(Debug)]
+struct DummyStreamPartition {
+    schema: SchemaRef,
+    bytes: Bytes,
+}
+
+impl PartitionStream for DummyStreamPartition {
+    fn schema(&self) -> &SchemaRef {
+        &self.schema
+    }
+
+    fn execute(&self, _ctx: Arc<TaskContext>) -> SendableRecordBatchStream {
+        let parquet_builder = ParquetRecordBatchReaderBuilder::try_new(self.bytes.clone()).unwrap();
+        let reader = parquet_builder.build().unwrap();
+        Box::pin(RecordBatchStreamAdapter::new(
+            self.schema.clone(),
+            futures::stream::iter(reader)
+                .map(|batch| batch.map_err(|e| DataFusionError::ArrowError(e, None))),
+        ))
+    }
+}
+
 #[component]
 fn App() -> impl IntoView {
     let default_url = "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet";
@@ -357,6 +384,8 @@ fn App() -> impl IntoView {
         let query = sql_query.get();
         let bytes_opt = file_bytes.get();
         let table_name = file_name.get();
+        set_error_message.set(None);  // Clear any previous error messages
+        
         if query.trim().is_empty() {
             set_error_message.set(Some("Please enter a SQL query.".into()));
             return;
@@ -366,42 +395,71 @@ fn App() -> impl IntoView {
                 web_sys::console::log_1(&table_name.clone().into());
                 let ctx = datafusion::prelude::SessionContext::new();
 
-                // Create a MemTable from Parquet bytes
-                let parquet_builder = ParquetRecordBatchReaderBuilder::try_new(bytes).unwrap();
-                let reader = parquet_builder.build().unwrap();
+                let schema = match file_content.get_untracked() {
+                    Some(content) => content.schema.clone(),
+                    None => {
+                        set_error_message.set(Some("Failed to get file schema".into()));
+                        return;
+                    }
+                };
 
-                let schema = file_content.get_untracked().unwrap().schema.clone();
+                let streaming_table = match datafusion::datasource::streaming::StreamingTable::try_new(
+                    schema.clone(),
+                    vec![Arc::new(DummyStreamPartition {
+                        schema: schema.clone(),
+                        bytes: bytes.clone(),
+                    })],
+                ) {
+                    Ok(table) => table,
+                    Err(e) => {
+                        set_error_message.set(Some(format!("Failed to create streaming table: {}", e)));
+                        return;
+                    }
+                };
 
-                let mut results = Vec::new();
-
-                for record in reader {
-                    results.push(record.unwrap());
+                if let Err(e) = ctx.register_table(table_name.clone(), Arc::new(streaming_table)) {
+                    set_error_message.set(Some(format!("Failed to register table '{}': {}", table_name, e)));
+                    return;
                 }
 
-                let mem_table =
-                    datafusion::datasource::memory::MemTable::try_new(schema, vec![results])
-                        .unwrap();
-                ctx.register_table(table_name, Arc::new(mem_table)).unwrap();
+                let plan = match ctx.sql(&query).await {
+                    Ok(plan) => plan,
+                    Err(e) => {
+                        set_error_message.set(Some(format!("SQL error: {}", e)));
+                        return;
+                    }
+                };
 
-                // Execute the SQL query
-
-                let plan = ctx.sql(&query).await.expect("Error generating plan");
                 let (state, plan) = plan.into_parts();
-                let plan = state.optimize(&plan).expect("Error optimizing plan");
+                let plan = match state.optimize(&plan) {
+                    Ok(plan) => plan,
+                    Err(e) => {
+                        set_error_message.set(Some(format!("Failed to optimize query: {}", e)));
+                        return;
+                    }
+                };
 
                 set_logical_plan.set(Some(plan.clone()));
 
-                let physical_plan = state
-                    .create_physical_plan(&plan)
-                    .await
-                    .expect("Error creating physical plan");
+                let physical_plan = match state.create_physical_plan(&plan).await {
+                    Ok(plan) => plan,
+                    Err(e) => {
+                        set_error_message.set(Some(format!("Failed to create execution plan: {}", e)));
+                        return;
+                    }
+                };
+
                 set_physical_plan.set(Some(physical_plan.clone()));
 
-                let results = collect(physical_plan, ctx.task_ctx().clone())
-                    .await
-                    .unwrap();
-
-                set_query_result.set(results);
+                match collect(physical_plan, ctx.task_ctx().clone()).await {
+                    Ok(results) => {
+                        set_error_message.set(None);  // Clear error message on success
+                        set_query_result.set(results);
+                    },
+                    Err(e) => {
+                        set_error_message.set(Some(format!("Failed to execute query: {}", e)));
+                    }
+                };
             });
         } else {
             set_error_message.set(Some("No Parquet file loaded.".into()));
@@ -473,6 +531,7 @@ fn App() -> impl IntoView {
                         </form>
                     </div>
                 </div>
+                <div class="border-t border-gray-300 my-4"></div>
 
                 {move || {
                     error_message

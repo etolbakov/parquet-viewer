@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use arrow::array::Array;
@@ -10,15 +9,6 @@ use datafusion::{
     physical_plan::{display::DisplayableExecutionPlan, ExecutionPlan},
 };
 use leptos::*;
-
-#[derive(Debug)]
-struct NodeLayout {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-    children: Vec<usize>,
-}
 
 #[component]
 pub fn QueryResults(
