@@ -1,10 +1,10 @@
-# Parquet Explorer
+# Parquet Viewer
 
-Online at: https://xiangpenghao.github.io/parquet-explorer
+Online at: https://xiangpenghao.github.io/parquet-viewer
 
 It compiles [parquet-rs](https://github.com/apache/arrow-rs) to WebAssembly and uses it to explore Parquet files.
 
-![screenshot](doc/parquet-explorer.gif)
+![screenshot](doc/parquet-viewer.gif)
 
 
 
