@@ -5,7 +5,6 @@ use arrow::datatypes::DataType;
 use arrow::record_batch::RecordBatch;
 use datafusion::{
     common::cast::{as_binary_array, as_binary_view_array, as_string_view_array},
-    logical_expr::LogicalPlan,
     physical_plan::{
         accept, display::DisplayableExecutionPlan, DisplayFormatType, ExecutionPlan,
         ExecutionPlanVisitor,
@@ -16,7 +15,6 @@ use leptos::*;
 #[component]
 pub fn QueryResults(
     query_result: Vec<RecordBatch>,
-    logical_plan: LogicalPlan,
     physical_plan: Arc<dyn ExecutionPlan>,
 ) -> impl IntoView {
     let (active_tab, set_active_tab) = create_signal("results".to_string());
@@ -37,22 +35,12 @@ pub fn QueryResults(
                 <button
                     class=move || format!(
                         "px-4 py-2 {} {}",
-                        if active_tab() == "logical_plan" { "border-b-2 border-blue-500 text-blue-600" } else { "text-gray-600" },
-                        "hover:text-blue-600"
-                    )
-                    on:click=move |_| set_active_tab("logical_plan".to_string())
-                >
-                    "Logical Plan"
-                </button>
-                <button
-                    class=move || format!(
-                        "px-4 py-2 {} {}",
                         if active_tab() == "physical_plan" { "border-b-2 border-blue-500 text-blue-600" } else { "text-gray-600" },
                         "hover:text-blue-600"
                     )
                     on:click=move |_| set_active_tab("physical_plan".to_string())
                 >
-                    "Physical Plan"
+                    "ExecutionPlan"
                 </button>
             </div>
 
@@ -102,11 +90,6 @@ pub fn QueryResults(
                                 }
                             </tbody>
                         </table>
-                    </div>
-                }.into_view(),
-                "logical_plan" => view! {
-                    <div class="whitespace-pre-wrap font-mono">
-                        {logical_plan.display_indent().to_string()}
                     </div>
                 }.into_view(),
                 "physical_plan" => view! {

@@ -2,7 +2,6 @@ mod schema;
 use datafusion::{
     error::DataFusionError,
     execution::{SendableRecordBatchStream, TaskContext},
-    logical_expr::LogicalPlan,
     physical_plan::{
         collect, stream::RecordBatchStreamAdapter, streaming::PartitionStream, ExecutionPlan,
     },
@@ -272,7 +271,6 @@ fn App() -> impl IntoView {
     let (sql_query, set_sql_query) = create_signal(String::new());
     let (query_result, set_query_result) = create_signal(Vec::<arrow::array::RecordBatch>::new());
     let (file_name, set_file_name) = create_signal(String::from("uploaded"));
-    let (logical_plan, set_logical_plan) = create_signal(None::<LogicalPlan>);
     let (physical_plan, set_physical_plan) = create_signal(None::<Arc<dyn ExecutionPlan>>);
 
     let execute_query = move || {
@@ -339,7 +337,7 @@ fn App() -> impl IntoView {
                     }
                 };
 
-                set_logical_plan.set(Some(plan.clone()));
+                web_sys::console::log_1(&plan.display_indent().to_string().into());
 
                 let physical_plan = match state.create_physical_plan(&plan).await {
                     Ok(plan) => plan,
@@ -616,10 +614,9 @@ fn App() -> impl IntoView {
                         return view! {
                         }.into_view();
                     } else {
-                        let logical_plan = logical_plan.get().unwrap();
                         let physical_plan = physical_plan.get().unwrap();
                         view! {
-                            <QueryResults query_result=result logical_plan=logical_plan physical_plan=physical_plan />
+                            <QueryResults query_result=result physical_plan=physical_plan />
                         }
                         .into_view()
                     }
