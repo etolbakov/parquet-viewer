@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-arrow = { version = "53.2.0", features = ["prettyprint"] }
-arrow-schema = { version = "53.2.0" }
-arrow-array = { version = "53.2.0" }
+arrow = { version = "53.2.0", default-features = false }
+arrow-schema = { version = "53.2.0", default-features = false }
+arrow-array = { version = "53.2.0", default-features = false }
 bytes = "1.8.0"
 console_error_panic_hook = "0.1.7"
 datafusion = { version = "42.2.0", default-features = false }
@@ -28,3 +28,9 @@ web-sys = { version = "0.3.72", features = [
 ] }
 chrono = { version = "0.4", features = ["wasmbind"] }
 futures = "0.3.31"
+
+[profile.release]
+strip = true
+opt-level = "z"
+# lto = true
+panic = "abort"
