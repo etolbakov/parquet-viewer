@@ -9,7 +9,9 @@ arrow-schema = { version = "53.2.0", default-features = false }
 arrow-array = { version = "53.2.0", default-features = false }
 bytes = "1.8.0"
 console_error_panic_hook = "0.1.7"
-datafusion = { version = "42.2.0", default-features = false }
+datafusion = { version = "42.2.0", default-features = false, features = [
+	"parquet",
+] }
 leptos = { version = "0.6.15", features = ["csr", "nightly"] }
 parquet = { version = "53.2.0", features = [
 	"arrow",
