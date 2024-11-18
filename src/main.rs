@@ -32,6 +32,9 @@ use wasm_bindgen::{prelude::Closure, JsCast};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys;
 
+mod query_input;
+use query_input::QueryInput;
+
 #[derive(Debug, Clone)]
 struct ParquetInfo {
     file_size: u64,
@@ -477,10 +480,6 @@ fn App() -> impl IntoView {
         });
     };
 
-    let run_query = move |_ev: web_sys::MouseEvent| {
-        execute_query();
-    };
-
     view! {
         <div class="container mx-auto px-4 py-8 max-w-6xl">
             <h1 class="text-3xl font-bold mb-8 flex items-center justify-between">
@@ -576,33 +575,12 @@ fn App() -> impl IntoView {
                             .get()
                             .map(|_| {
                                 view! {
-                                    <div class="flex gap-2 items-center">
-                                        <input
-                                            type="text"
-                                            placeholder=move || {
-                                                format!("select * from \"{}\" limit 10", file_name.get())
-                                            }
-                                            prop:value=sql_query
-                                            on:input=move |ev| set_sql_query(event_target_value(&ev))
-                                            on:dblclick=move |_| {
-                                                if sql_query.get().trim().is_empty() {
-                                                    set_sql_query(format!("select * from \"{}\" limit 10", file_name.get()))
-                                                }
-                                            }
-                                            on:keydown=move |ev| {
-                                                if ev.key() == "Enter" {
-                                                    execute_query();
-                                                }
-                                            }
-                                            class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                        <button
-                                            on:click=run_query
-                                            class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 whitespace-nowrap"
-                                        >
-                                            "Run Query"
-                                        </button>
-                                    </div>
+                                    <QueryInput
+                                        sql_query=sql_query
+                                        set_sql_query=set_sql_query
+                                        file_name=file_name
+                                        execute_query=Arc::new(execute_query)
+                                    />
                                 }
                             })
                     }}
