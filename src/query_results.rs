@@ -14,6 +14,7 @@ use leptos::*;
 
 #[component]
 pub fn QueryResults(
+    sql_query: String,
     query_result: Vec<RecordBatch>,
     physical_plan: Arc<dyn ExecutionPlan>,
 ) -> impl IntoView {
@@ -21,6 +22,9 @@ pub fn QueryResults(
 
     view! {
         <div class="mt-4 p-4 bg-white border border-gray-300 rounded-md">
+            <div class="mb-4 p-3 bg-gray-50 rounded border border-gray-200 font-mono text-sm overflow-x-auto">
+                {sql_query}
+            </div>
             <div class="mb-4 border-b border-gray-300">
                 <button
                     class=move || format!(

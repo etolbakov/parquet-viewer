@@ -387,16 +387,23 @@ fn App() -> impl IntoView {
                 }}
                 <div class="mt-4">
                     {move || {
+
                         file_bytes
                             .get()
                             .map(|_| {
-                                view! {
-                                    <QueryInput
-                                        sql_query=sql_query
-                                        set_sql_query=set_sql_query
-                                        file_name=file_name
-                                        execute_query=Arc::new(execute_query)
-                                    />
+                                match file_content.get_untracked() {
+                                    Some(info) => {
+                                        view! {
+                                            <QueryInput
+                                                sql_query=sql_query
+                                                set_sql_query=set_sql_query
+                                                file_name=file_name
+                                                execute_query=Arc::new(execute_query)
+                                                schema=info.schema
+                                            />
+                                        }
+                                    },
+                                    None => view! {}.into_view(),
                                 }
                             })
                     }}
@@ -410,7 +417,7 @@ fn App() -> impl IntoView {
                     } else {
                         let physical_plan = physical_plan.get().unwrap();
                         view! {
-                            <QueryResults query_result=result physical_plan=physical_plan />
+                            <QueryResults sql_query=sql_query.get_untracked() query_result=result physical_plan=physical_plan />
                         }
                         .into_view()
                     }

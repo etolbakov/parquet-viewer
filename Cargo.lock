@@ -2140,6 +2140,7 @@ dependencies = [
  "futures",
  "leptos",
  "parquet",
+ "serde",
  "serde_json",
  "wasm-bindgen-futures",
  "web-sys",
