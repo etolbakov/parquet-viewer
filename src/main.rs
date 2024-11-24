@@ -1,11 +1,5 @@
 mod schema;
-use datafusion::{
-    error::DataFusionError,
-    execution::{SendableRecordBatchStream, TaskContext},
-    physical_plan::{
-        collect, stream::RecordBatchStreamAdapter, streaming::PartitionStream, ExecutionPlan,
-    },
-};
+use datafusion::physical_plan::ExecutionPlan;
 use query_results::QueryResults;
 use schema::SchemaSection;
 
@@ -21,19 +15,16 @@ use arrow::datatypes::SchemaRef;
 use bytes::Bytes;
 use leptos::*;
 use parquet::{
-    arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, parquet_to_arrow_schema},
+    arrow::parquet_to_arrow_schema,
     errors::ParquetError,
-    file::{
-        metadata::{ParquetMetaData, ParquetMetaDataReader},
-        statistics::Statistics,
-    },
+    file::metadata::{ParquetMetaData, ParquetMetaDataReader},
 };
 use wasm_bindgen::{prelude::Closure, JsCast};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys;
 
 mod query_input;
-use query_input::QueryInput;
+use query_input::{execute_query_inner, QueryInput};
 
 #[derive(Debug, Clone)]
 struct ParquetInfo {
@@ -152,118 +143,6 @@ impl std::fmt::Display for ParquetInfo {
     }
 }
 
-fn stats_to_string(stats: Option<Statistics>) -> String {
-    match stats {
-        Some(stats) => {
-            let mut parts = Vec::new();
-            match &stats {
-                Statistics::Int32(s) => {
-                    if let Some(min) = s.min_opt() {
-                        parts.push(format!("min: {}", min));
-                    }
-                    if let Some(max) = s.max_opt() {
-                        parts.push(format!("max: {}", max));
-                    }
-                }
-                Statistics::Int64(s) => {
-                    if let Some(min) = s.min_opt() {
-                        parts.push(format!("min: {}", min));
-                    }
-                    if let Some(max) = s.max_opt() {
-                        parts.push(format!("max: {}", max));
-                    }
-                }
-                Statistics::Int96(s) => {
-                    if let Some(min) = s.min_opt() {
-                        parts.push(format!("min: {}", min));
-                    }
-                    if let Some(max) = s.max_opt() {
-                        parts.push(format!("max: {}", max));
-                    }
-                }
-                Statistics::Boolean(s) => {
-                    if let Some(min) = s.min_opt() {
-                        parts.push(format!("min: {}", min));
-                    }
-                    if let Some(max) = s.max_opt() {
-                        parts.push(format!("max: {}", max));
-                    }
-                }
-                Statistics::Float(s) => {
-                    if let Some(min) = s.min_opt() {
-                        parts.push(format!("min: {:.2}", min));
-                    }
-                    if let Some(max) = s.max_opt() {
-                        parts.push(format!("max: {:.2}", max));
-                    }
-                }
-                Statistics::Double(s) => {
-                    if let Some(min) = s.min_opt() {
-                        parts.push(format!("min: {:.2}", min));
-                    }
-                    if let Some(max) = s.max_opt() {
-                        parts.push(format!("max: {:.2}", max));
-                    }
-                }
-                Statistics::ByteArray(s) => {
-                    s.min_opt()
-                        .and_then(|min| min.as_utf8().ok())
-                        .map(|min_utf8| parts.push(format!("min: {:?}", min_utf8)));
-                    s.max_opt()
-                        .and_then(|max| max.as_utf8().ok())
-                        .map(|max_utf8| parts.push(format!("max: {:?}", max_utf8)));
-                }
-                Statistics::FixedLenByteArray(s) => {
-                    s.min_opt()
-                        .and_then(|min| min.as_utf8().ok())
-                        .map(|min_utf8| parts.push(format!("min: {:?}", min_utf8)));
-                    s.max_opt()
-                        .and_then(|max| max.as_utf8().ok())
-                        .map(|max_utf8| parts.push(format!("max: {:?}", max_utf8)));
-                }
-            }
-
-            if let Some(null_count) = stats.null_count_opt() {
-                parts.push(format!("nulls: {}", format_rows(null_count as u64)));
-            }
-
-            if let Some(distinct_count) = stats.distinct_count_opt() {
-                parts.push(format!("distinct: {}", format_rows(distinct_count as u64)));
-            }
-
-            if parts.is_empty() {
-                "✗".to_string()
-            } else {
-                parts.join(" / ")
-            }
-        }
-        None => "✗".to_string(),
-    }
-}
-
-use futures::StreamExt;
-#[derive(Debug)]
-struct DummyStreamPartition {
-    schema: SchemaRef,
-    bytes: Bytes,
-}
-
-impl PartitionStream for DummyStreamPartition {
-    fn schema(&self) -> &SchemaRef {
-        &self.schema
-    }
-
-    fn execute(&self, _ctx: Arc<TaskContext>) -> SendableRecordBatchStream {
-        let parquet_builder = ParquetRecordBatchReaderBuilder::try_new(self.bytes.clone()).unwrap();
-        let reader = parquet_builder.build().unwrap();
-        Box::pin(RecordBatchStreamAdapter::new(
-            self.schema.clone(),
-            futures::stream::iter(reader)
-                .map(|batch| batch.map_err(|e| DataFusionError::ArrowError(e, None))),
-        ))
-    }
-}
-
 #[component]
 fn App() -> impl IntoView {
     let default_url = "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet";
@@ -276,8 +155,7 @@ fn App() -> impl IntoView {
     let (file_name, set_file_name) = create_signal(String::from("uploaded"));
     let (physical_plan, set_physical_plan) = create_signal(None::<Arc<dyn ExecutionPlan>>);
 
-    let execute_query = move || {
-        let query = sql_query.get();
+    let execute_query = move |query: String| {
         let bytes_opt = file_bytes.get();
         let table_name = file_name.get();
         set_error_message.set(None); // Clear any previous error messages
@@ -289,84 +167,49 @@ fn App() -> impl IntoView {
         if let Some(bytes) = bytes_opt {
             wasm_bindgen_futures::spawn_local(async move {
                 web_sys::console::log_1(&table_name.clone().into());
-                let ctx = datafusion::prelude::SessionContext::new();
 
-                let schema = match file_content.get_untracked() {
-                    Some(content) => content.schema.clone(),
+                let parquet_info = match file_content.get_untracked() {
+                    Some(content) => content,
                     None => {
                         set_error_message.set(Some("Failed to get file schema".into()));
                         return;
                     }
                 };
-
-                let streaming_table =
-                    match datafusion::datasource::streaming::StreamingTable::try_new(
-                        schema.clone(),
-                        vec![Arc::new(DummyStreamPartition {
-                            schema: schema.clone(),
-                            bytes: bytes.clone(),
-                        })],
-                    ) {
-                        Ok(table) => table,
+                let (results, physical_plan) =
+                    match execute_query_inner(&table_name, parquet_info, bytes, &query).await {
+                        Ok((results, physical_plan)) => (results, physical_plan),
                         Err(e) => {
-                            set_error_message
-                                .set(Some(format!("Failed to create streaming table: {}", e)));
+                            set_error_message.set(Some(format!("Failed to execute query: {}", e)));
                             return;
                         }
                     };
-
-                if let Err(e) = ctx.register_table(table_name.clone(), Arc::new(streaming_table)) {
-                    set_error_message.set(Some(format!(
-                        "Failed to register table '{}': {}",
-                        table_name, e
-                    )));
-                    return;
-                }
-
-                let plan = match ctx.sql(&query).await {
-                    Ok(plan) => plan,
-                    Err(e) => {
-                        set_error_message.set(Some(format!("SQL error: {}", e)));
-                        return;
-                    }
-                };
-
-                let (state, plan) = plan.into_parts();
-                let plan = match state.optimize(&plan) {
-                    Ok(plan) => plan,
-                    Err(e) => {
-                        set_error_message.set(Some(format!("Failed to optimize query: {}", e)));
-                        return;
-                    }
-                };
-
-                web_sys::console::log_1(&plan.display_indent().to_string().into());
-
-                let physical_plan = match state.create_physical_plan(&plan).await {
-                    Ok(plan) => plan,
-                    Err(e) => {
-                        set_error_message
-                            .set(Some(format!("Failed to create execution plan: {}", e)));
-                        return;
-                    }
-                };
-
                 set_physical_plan.set(Some(physical_plan.clone()));
-
-                match collect(physical_plan, ctx.task_ctx().clone()).await {
-                    Ok(results) => {
-                        set_error_message.set(None); // Clear error message on success
-                        set_query_result.set(results);
-                    }
-                    Err(e) => {
-                        set_error_message.set(Some(format!("Failed to execute query: {}", e)));
-                    }
-                };
+                set_query_result.set(results);
             });
         } else {
             set_error_message.set(Some("No Parquet file loaded.".into()));
         };
     };
+
+    let on_bytes_load =
+        move |bytes: Bytes, file_content_setter: WriteSignal<Option<ParquetInfo>>| {
+            let parquet_info = get_parquet_info(bytes.clone());
+
+            match parquet_info {
+                Ok(info) => {
+                    web_sys::console::log_1(&info.to_string().into());
+                    file_content_setter.set(Some(info));
+                    set_file_bytes.set(Some(bytes.clone()));
+                    let default_query =
+                        format!("select * from \"{}\" limit 10", file_name.get_untracked());
+                    set_sql_query.set(default_query.clone());
+                    execute_query(default_query);
+                }
+                Err(_e) => {
+                    file_content_setter.set(None);
+                }
+            }
+        };
 
     let on_file_select = move |ev: web_sys::Event| {
         let input: web_sys::HtmlInputElement = event_target(&ev);
@@ -382,22 +225,7 @@ fn App() -> impl IntoView {
             let array_buffer = result.dyn_into::<js_sys::ArrayBuffer>().unwrap();
             let uint8_array = js_sys::Uint8Array::new(&array_buffer);
             let bytes = bytes::Bytes::from(uint8_array.to_vec());
-            let parquet_info = get_parquet_info(bytes.clone());
-
-            match parquet_info {
-                Ok(info) => {
-                    web_sys::console::log_1(&info.to_string().into());
-                    file_content_setter.set(Some(info));
-                    set_file_bytes.set(Some(bytes.clone()));
-                    let default_query =
-                        format!("select * from \"{}\" limit 10", file_name.get_untracked());
-                    set_sql_query.set(default_query);
-                    execute_query();
-                }
-                Err(_e) => {
-                    file_content_setter.set(None);
-                }
-            }
+            on_bytes_load(bytes, file_content_setter);
         }) as Box<dyn FnMut(_)>);
 
         file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
@@ -464,19 +292,7 @@ fn App() -> impl IntoView {
             let uint8_array = js_sys::Uint8Array::new(&array_buffer);
             let bytes = bytes::Bytes::from(uint8_array.to_vec());
 
-            let parquet_info = get_parquet_info(bytes.clone());
-            match parquet_info {
-                Ok(info) => {
-                    set_file_content.set(Some(info.clone()));
-                    set_file_bytes.set(Some(bytes.clone()));
-                    let default_query = format!("select * from \"{}\" limit 10", table_name);
-                    set_sql_query.set(default_query);
-                    execute_query();
-                }
-                Err(_) => {
-                    set_file_content.set(None);
-                }
-            }
+            on_bytes_load(bytes, set_file_content);
         });
     };
 

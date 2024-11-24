@@ -1,6 +1,96 @@
 use leptos::*;
+use parquet::file::statistics::Statistics;
 
 use crate::format_rows;
+
+fn stats_to_string(stats: Option<Statistics>) -> String {
+    match stats {
+        Some(stats) => {
+            let mut parts = Vec::new();
+            match &stats {
+                Statistics::Int32(s) => {
+                    if let Some(min) = s.min_opt() {
+                        parts.push(format!("min: {}", min));
+                    }
+                    if let Some(max) = s.max_opt() {
+                        parts.push(format!("max: {}", max));
+                    }
+                }
+                Statistics::Int64(s) => {
+                    if let Some(min) = s.min_opt() {
+                        parts.push(format!("min: {}", min));
+                    }
+                    if let Some(max) = s.max_opt() {
+                        parts.push(format!("max: {}", max));
+                    }
+                }
+                Statistics::Int96(s) => {
+                    if let Some(min) = s.min_opt() {
+                        parts.push(format!("min: {}", min));
+                    }
+                    if let Some(max) = s.max_opt() {
+                        parts.push(format!("max: {}", max));
+                    }
+                }
+                Statistics::Boolean(s) => {
+                    if let Some(min) = s.min_opt() {
+                        parts.push(format!("min: {}", min));
+                    }
+                    if let Some(max) = s.max_opt() {
+                        parts.push(format!("max: {}", max));
+                    }
+                }
+                Statistics::Float(s) => {
+                    if let Some(min) = s.min_opt() {
+                        parts.push(format!("min: {:.2}", min));
+                    }
+                    if let Some(max) = s.max_opt() {
+                        parts.push(format!("max: {:.2}", max));
+                    }
+                }
+                Statistics::Double(s) => {
+                    if let Some(min) = s.min_opt() {
+                        parts.push(format!("min: {:.2}", min));
+                    }
+                    if let Some(max) = s.max_opt() {
+                        parts.push(format!("max: {:.2}", max));
+                    }
+                }
+                Statistics::ByteArray(s) => {
+                    s.min_opt()
+                        .and_then(|min| min.as_utf8().ok())
+                        .map(|min_utf8| parts.push(format!("min: {:?}", min_utf8)));
+                    s.max_opt()
+                        .and_then(|max| max.as_utf8().ok())
+                        .map(|max_utf8| parts.push(format!("max: {:?}", max_utf8)));
+                }
+                Statistics::FixedLenByteArray(s) => {
+                    s.min_opt()
+                        .and_then(|min| min.as_utf8().ok())
+                        .map(|min_utf8| parts.push(format!("min: {:?}", min_utf8)));
+                    s.max_opt()
+                        .and_then(|max| max.as_utf8().ok())
+                        .map(|max_utf8| parts.push(format!("max: {:?}", max_utf8)));
+                }
+            }
+
+            if let Some(null_count) = stats.null_count_opt() {
+                parts.push(format!("nulls: {}", format_rows(null_count as u64)));
+            }
+
+            if let Some(distinct_count) = stats.distinct_count_opt() {
+                parts.push(format!("distinct: {}", format_rows(distinct_count as u64)));
+            }
+
+            if parts.is_empty() {
+                "✗".to_string()
+            } else {
+                parts.join(" / ")
+            }
+        }
+        None => "✗".to_string(),
+    }
+}
 
 #[component]
 pub fn RowGroupSection(
@@ -183,7 +273,7 @@ pub fn RowGroupSection(
                             <div class="col-span-2 space-y-1">
                                 <div class="text-sm text-gray-500">"Statistics"</div>
                                 <div class="font-medium text-sm">
-                                    {super::stats_to_string(statistics)}
+                                    {stats_to_string(statistics)}
                                 </div>
                             </div>
                         </div>
@@ -192,4 +282,4 @@ pub fn RowGroupSection(
             </div>
         </div>
     }
-} 
+}
