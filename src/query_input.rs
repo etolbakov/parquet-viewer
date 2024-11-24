@@ -9,6 +9,7 @@ use datafusion::{
     physical_plan::{
         collect, stream::RecordBatchStreamAdapter, streaming::PartitionStream, ExecutionPlan,
     },
+    prelude::SessionConfig,
 };
 use leptos::*;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
@@ -49,7 +50,10 @@ pub(crate) async fn execute_query_inner(
     query: &str,
 ) -> Result<(Vec<RecordBatch>, Arc<dyn ExecutionPlan>), DataFusionError> {
     web_sys::console::log_1(&table_name.into());
-    let ctx = datafusion::prelude::SessionContext::new();
+    let mut config = SessionConfig::new();
+    config.options_mut().sql_parser.dialect = "PostgreSQL".to_string();
+
+    let ctx = datafusion::prelude::SessionContext::new_with_config(config);
 
     let schema = parquet_info.schema.clone();
 
@@ -159,8 +163,8 @@ fn process_user_input(
     web_sys::console::log_1(&format!("Processing user input: {}", input).into());
 
     let prompt = format!(
-        "the table name is: {}, the schema of the table is: {}. Field names should be quoted. Please generate a SQL query to answer the following question: {}",
-        file_name, schema_str, input
+        "Generate a SQL query to answer the following question: {}. You should generate PostgreSQL SQL dialect, all field names should be double quoted, and the output SQL should be executable, be careful about the available columns. The table name is: {}, the schema of the table is: {}.  ",
+        input, file_name, schema_str
     );
     web_sys::console::log_1(&prompt.clone().into());
 
