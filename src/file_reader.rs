@@ -5,6 +5,30 @@ use wasm_bindgen::{prelude::Closure, JsCast};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys;
 
+const S3_ENDPOINT_KEY: &str = "s3_endpoint";
+const S3_ACCESS_KEY_ID_KEY: &str = "s3_access_key_id";
+const S3_SECRET_KEY_KEY: &str = "s3_secret_key";
+const S3_BUCKET_KEY: &str = "s3_bucket";
+const S3_REGION_KEY: &str = "s3_region";
+const S3_FILE_PATH_KEY: &str = "s3_file_path";
+
+fn get_stored_value(key: &str, default: &str) -> String {
+    let window = web_sys::window().unwrap();
+    let storage = window.local_storage().unwrap().unwrap();
+    storage
+        .get_item(key)
+        .unwrap()
+        .unwrap_or_else(|| default.to_string())
+}
+
+fn save_to_storage(key: &str, value: &str) {
+    if let Some(window) = web_sys::window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            let _ = storage.set_item(key, value);
+        }
+    }
+}
+
 async fn fetch_parquet_from_url(url_str: String) -> Result<Bytes, String> {
     let opts = web_sys::RequestInit::new();
     opts.set_method("GET");
@@ -61,12 +85,16 @@ pub fn FileReader(
     let default_url = "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet";
     let (url, set_url) = create_signal(default_url.to_string());
     let (active_tab, set_active_tab) = create_signal("file");
-    let (s3_endpoint, set_s3_endpoint) = create_signal(String::from("https://s3.amazonaws.com"));
-    let (s3_access_key_id, set_s3_access_key_id) = create_signal(String::new());
-    let (s3_secret_key, set_s3_secret_key) = create_signal(String::new());
-    let (s3_bucket, set_s3_bucket) = create_signal(String::new());
-    let (s3_region, set_s3_region) = create_signal(String::from("us-east-1"));
-    let (s3_file_path, set_s3_file_path) = create_signal(String::new());
+    let (s3_endpoint, set_s3_endpoint) = create_signal(get_stored_value(
+        S3_ENDPOINT_KEY,
+        "https://s3.amazonaws.com",
+    ));
+    let (s3_access_key_id, set_s3_access_key_id) =
+        create_signal(get_stored_value(S3_ACCESS_KEY_ID_KEY, ""));
+    let (s3_secret_key, set_s3_secret_key) = create_signal(get_stored_value(S3_SECRET_KEY_KEY, ""));
+    let (s3_bucket, set_s3_bucket) = create_signal(get_stored_value(S3_BUCKET_KEY, ""));
+    let (s3_region, set_s3_region) = create_signal(get_stored_value(S3_REGION_KEY, "us-east-1"));
+    let (s3_file_path, set_s3_file_path) = create_signal(get_stored_value(S3_FILE_PATH_KEY, ""));
 
     let on_file_select = move |ev: web_sys::Event| {
         let input: web_sys::HtmlInputElement = event_target(&ev);
@@ -134,6 +162,15 @@ pub fn FileReader(
             set_error_message.set(Some("All fields except region are required".into()));
             return;
         }
+        let file_name = s3_file_path
+            .get()
+            .split('/')
+            .last()
+            .unwrap_or("uploaded.parquet")
+            .strip_suffix(".parquet")
+            .unwrap_or("uploaded")
+            .to_string();
+        set_file_name.set(file_name);
 
         wasm_bindgen_futures::spawn_local(async move {
             let cfg = S3::default()
@@ -163,6 +200,42 @@ pub fn FileReader(
         });
     };
 
+    let on_s3_endpoint_change = move |ev| {
+        let value = event_target_value(&ev);
+        save_to_storage(S3_ENDPOINT_KEY, &value);
+        set_s3_endpoint.set(value);
+    };
+
+    let on_s3_access_key_change = move |ev| {
+        let value = event_target_value(&ev);
+        save_to_storage(S3_ACCESS_KEY_ID_KEY, &value);
+        set_s3_access_key_id.set(value);
+    };
+
+    let on_s3_secret_key_change = move |ev| {
+        let value = event_target_value(&ev);
+        save_to_storage(S3_SECRET_KEY_KEY, &value);
+        set_s3_secret_key.set(value);
+    };
+
+    let on_s3_bucket_change = move |ev| {
+        let value = event_target_value(&ev);
+        save_to_storage(S3_BUCKET_KEY, &value);
+        set_s3_bucket.set(value);
+    };
+
+    let on_s3_region_change = move |ev| {
+        let value = event_target_value(&ev);
+        save_to_storage(S3_REGION_KEY, &value);
+        set_s3_region.set(value);
+    };
+
+    let on_s3_file_path_change = move |ev| {
+        let value = event_target_value(&ev);
+        save_to_storage(S3_FILE_PATH_KEY, &value);
+        set_s3_file_path.set(value);
+    };
+
     view! {
         <div class="border-b border-gray-200">
         <nav class="-mb-px flex space-x-8">
@@ -177,7 +250,7 @@ pub fn FileReader(
                 }
                 on:click=move |_| set_active_tab.set("file")
             >
-                "Local file"
+                "From file"
             </button>
             <button
                 class=move || {
@@ -190,7 +263,7 @@ pub fn FileReader(
                 }
                 on:click=move |_| set_active_tab.set("url")
             >
-                "Load from URL"
+                "From URL"
             </button>
             <button
                 class=move || {
@@ -263,7 +336,7 @@ pub fn FileReader(
                             <input
                                 type="text"
                                 placeholder="https://s3.amazonaws.com"
-                                on:input=move |ev| set_s3_endpoint.set(event_target_value(&ev))
+                                on:input=on_s3_endpoint_change
                                 prop:value=s3_endpoint
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
@@ -274,7 +347,7 @@ pub fn FileReader(
                             </label>
                             <input
                                 type="text"
-                                on:input=move |ev| set_s3_access_key_id.set(event_target_value(&ev))
+                                on:input=on_s3_access_key_change
                                 prop:value=s3_access_key_id
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
@@ -285,7 +358,7 @@ pub fn FileReader(
                             </label>
                             <input
                                 type="password"
-                                on:input=move |ev| set_s3_secret_key.set(event_target_value(&ev))
+                                on:input=on_s3_secret_key_change
                                 prop:value=s3_secret_key
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
@@ -296,7 +369,7 @@ pub fn FileReader(
                             </label>
                             <input
                                 type="text"
-                                on:input=move |ev| set_s3_bucket.set(event_target_value(&ev))
+                                on:input=on_s3_bucket_change
                                 prop:value=s3_bucket
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
@@ -307,8 +380,7 @@ pub fn FileReader(
                             </label>
                             <input
                                 type="text"
-                                placeholder="us-east-1"
-                                on:input=move |ev| set_s3_region.set(event_target_value(&ev))
+                                on:input=on_s3_region_change
                                 prop:value=s3_region
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
@@ -319,8 +391,7 @@ pub fn FileReader(
                             </label>
                             <input
                                 type="text"
-                                placeholder="path/to/file.parquet"
-                                on:input=move |ev| set_s3_file_path.set(event_target_value(&ev))
+                                on:input=on_s3_file_path_change
                                 prop:value=s3_file_path
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
