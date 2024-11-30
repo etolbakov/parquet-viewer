@@ -367,17 +367,12 @@ fn App() -> impl IntoView {
                                 <div class="bg-red-50 border-l-4 border-red-500 p-4 my-4">
                                     <div class="text-red-700">{msg}</div>
                                     <div class="mt-2 text-sm text-gray-600">
-                                        "Tip: Try these sources:"
+                                        "Tips:"
                                         <ul class="list-disc ml-6 mt-2 space-y-1">
+                                            <li>"Make sure the URL has CORS enabled."</li>
+                                            <li>"If query with natural language, make sure to set the Gemini API key (free tier is enough)."</li>
                                             <li>
-                                                "Grid watch data: "
-                                                <code class="bg-gray-100 px-1 rounded">
-                                                    "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet"
-                                                </code>
-                                            </li>
-                                            <li>"Your own S3 bucket with CORS enabled"</li>
-                                            <li>
-                                                "Or download the file and use the file picker above"
+                                                "I usually download the file and use the file picker above."
                                             </li>
                                         </ul>
                                     </div>
@@ -400,6 +395,7 @@ fn App() -> impl IntoView {
                                                 file_name=file_name
                                                 execute_query=Arc::new(execute_query)
                                                 schema=info.schema
+                                                error_message=set_error_message
                                             />
                                         }
                                     },

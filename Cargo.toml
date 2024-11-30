@@ -27,6 +27,8 @@ web-sys = { version = "0.3.72", features = [
 	"HtmlInputElement",
 	"FileList",
 	"File",
+	"Storage",
+	"Window",
 ] }
 chrono = { version = "0.4", features = ["wasmbind"] }
 futures = "0.3.31"

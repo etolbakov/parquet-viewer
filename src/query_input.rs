@@ -84,10 +84,32 @@ pub(crate) async fn execute_query_inner(
 pub fn QueryInput(
     sql_query: ReadSignal<String>,
     set_sql_query: WriteSignal<String>,
+    error_message: WriteSignal<Option<String>>,
     file_name: ReadSignal<String>,
     execute_query: Arc<dyn Fn(String)>,
     schema: SchemaRef,
 ) -> impl IntoView {
+    let (api_key, set_api_key) = create_signal({
+        let window = web_sys::window().unwrap();
+        window
+            .local_storage()
+            .unwrap()
+            .unwrap()
+            .get_item("gemini_api_key")
+            .unwrap()
+            .unwrap_or_default()
+    });
+
+    create_effect(move |_| {
+        if let Some(window) = web_sys::window() {
+            if let Ok(Some(storage)) = window.local_storage() {
+                let _ = storage.set_item("gemini_api_key", &api_key.get());
+            }
+        }
+    });
+
+    let (show_settings, set_show_settings) = create_signal(false);
+
     let key_down_schema = schema.clone();
     let key_down_exec = execute_query.clone();
     let file_name_s = file_name.get_untracked();
@@ -100,6 +122,8 @@ pub fn QueryInput(
                 file_name_s.clone(),
                 key_down_exec.clone(),
                 set_sql_query.clone(),
+                api_key.get_untracked(),
+                error_message.clone(),
             );
         }
     };
@@ -115,30 +139,53 @@ pub fn QueryInput(
             file_name_s.clone(),
             key_down_exec.clone(),
             set_sql_query.clone(),
+            api_key.get_untracked(),
+            error_message.clone(),
         );
     };
 
     let default_query = format!("select * from \"{}\" limit 10", file_name.get_untracked());
 
     view! {
-        <div class="flex gap-2 items-center">
-            <input
-                type="text"
-                placeholder=default_query
-                on:input=move |ev| {
-                    let value = event_target_value(&ev);
-                    set_sql_query(value);
-                }
-                on:input=move |ev| set_sql_query(event_target_value(&ev))
-                on:keydown=key_down
-                class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-                on:click=button_press
-                class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 whitespace-nowrap"
-            >
-                "Run Query"
-            </button>
+        <div class="flex gap-2 items-center flex-col relative">
+            {move || show_settings.get().then(|| view! {
+                <div class="absolute top-0 right-0 mt-12 bg-white shadow-lg rounded-md p-4 border border-gray-200 z-10">
+                    <div class="flex flex-col gap-2">
+                        <label class="text-sm text-gray-600">
+                            <a href="https://aistudio.google.com/app/apikey" class="text-blue-500 hover:text-blue-700 underline">Gemini API</a> Key
+                        </label>
+                        <input
+                            type="text"
+                            placeholder="Enter API Key"
+                            on:input=move |ev| set_api_key(event_target_value(&ev))
+                            value=api_key
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+                </div>
+            })}
+            <div class="w-full flex gap-2 items-center">
+                <input
+                    type="text"
+                    placeholder=default_query
+                    on:input=move |ev| set_sql_query(event_target_value(&ev))
+                    on:keydown=key_down
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                    on:click=button_press
+                    class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 whitespace-nowrap"
+                >
+                    "Run Query"
+                </button>
+                <button
+                    on:click=move |_| set_show_settings.update(|v| *v = !*v)
+                    class="px-3 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200"
+                    title="Settings"
+                >
+                    "..."
+                </button>
+            </div>
         </div>
     }
 }
@@ -149,6 +196,8 @@ fn process_user_input(
     file_name: String,
     exec: Arc<dyn Fn(String)>,
     set_sql_query: WriteSignal<String>,
+    api_key: String,
+    error_message: WriteSignal<Option<String>>,
 ) {
     // if the input seems to be a SQL query, return it as is
     if input.starts_with("select") || input.starts_with("SELECT") {
@@ -170,11 +219,14 @@ fn process_user_input(
 
     spawn_local({
         let prompt = prompt.clone();
+        let api_key = api_key.clone();
         async move {
-            let sql = match generate_sql_via_gemini(prompt).await {
+            let sql = match generate_sql_via_gemini(prompt, api_key).await {
                 Ok(response) => response,
                 Err(e) => {
-                    web_sys::console::log_1(&e.into());
+                    web_sys::console::log_1(&e.clone().into());
+                    let gemini_error = format!("Failed to generate SQL through Gemini: {}", e);
+                    error_message.set(Some(gemini_error));
                     return;
                 }
             };
@@ -194,14 +246,11 @@ fn schema_to_brief_str(schema: SchemaRef) -> String {
 }
 
 // Asynchronous function to call the Gemini API
-async fn generate_sql_via_gemini(prompt: String) -> Result<String, String> {
-    // this is free tier key, who cares
-    let default_key = "AIzaSyDSEI9ixzvFYQx-e82poEtz8e0bM4omB0Q";
-
-    // Define the API endpoint
+async fn generate_sql_via_gemini(prompt: String, api_key: String) -> Result<String, String> {
+    // Remove the hardcoded key
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={}",
-        default_key
+        api_key
     );
 
     // Build the JSON payload
