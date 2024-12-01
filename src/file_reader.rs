@@ -84,7 +84,7 @@ pub fn FileReader(
 ) -> impl IntoView {
     let default_url = "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet";
     let (url, set_url) = create_signal(default_url.to_string());
-    let (active_tab, set_active_tab) = create_signal("file");
+    let (active_tab, set_active_tab) = create_signal("file".to_string());
     let (s3_endpoint, set_s3_endpoint) = create_signal(get_stored_value(
         S3_ENDPOINT_KEY,
         "https://s3.amazonaws.com",
@@ -95,6 +95,12 @@ pub fn FileReader(
     let (s3_bucket, set_s3_bucket) = create_signal(get_stored_value(S3_BUCKET_KEY, ""));
     let (s3_region, set_s3_region) = create_signal(get_stored_value(S3_REGION_KEY, "us-east-1"));
     let (s3_file_path, set_s3_file_path) = create_signal(get_stored_value(S3_FILE_PATH_KEY, ""));
+    let (is_folded, set_is_folded) = create_signal(false);
+
+    let set_active_tab = move |tab: &str| {
+        set_active_tab.set(tab.to_string());
+        set_is_folded.set(false);
+    };
 
     let on_file_select = move |ev: web_sys::Event| {
         let input: web_sys::HtmlInputElement = event_target(&ev);
@@ -110,6 +116,7 @@ pub fn FileReader(
             let uint8_array = js_sys::Uint8Array::new(&array_buffer);
             let bytes = bytes::Bytes::from(uint8_array.to_vec());
             set_file_bytes.set(Some(bytes.clone()));
+            set_is_folded.set(true);
         }) as Box<dyn FnMut(_)>);
 
         file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
@@ -141,6 +148,7 @@ pub fn FileReader(
             match fetch_parquet_from_url(url_str).await {
                 Ok(bytes) => {
                     set_file_bytes.set(Some(bytes.clone()));
+                    set_is_folded.set(true);
                 }
                 Err(error) => set_error_message.set(Some(error)),
             }
@@ -187,6 +195,7 @@ pub fn FileReader(
                         Ok(bs) => {
                             let bytes = Bytes::from(bs.to_vec());
                             set_file_bytes.set(Some(bytes.clone()));
+                            set_is_folded.set(true);
                         }
                         Err(e) => {
                             set_error_message.set(Some(format!("Failed to read from S3: {}", e)));
@@ -252,7 +261,7 @@ pub fn FileReader(
                                 )
                             }
                         }
-                        on:click=move |_| set_active_tab.set("file")
+                        on:click=move |_| set_active_tab("file")
                     >
                         "From file"
                     </button>
@@ -268,7 +277,7 @@ pub fn FileReader(
                                 )
                             }
                         }
-                        on:click=move |_| set_active_tab.set("url")
+                        on:click=move |_| set_active_tab("url")
                     >
                         "From URL"
                     </button>
@@ -284,7 +293,7 @@ pub fn FileReader(
                                 )
                             }
                         }
-                        on:click=move |_| set_active_tab.set("s3")
+                        on:click=move |_| set_active_tab("s3")
                     >
                         "From S3"
                     </button>
@@ -292,10 +301,15 @@ pub fn FileReader(
             </div>
 
             {move || {
-                match active_tab.get() {
+                let transition_class = if is_folded.get() {
+                    "max-h-0 overflow-hidden transition-all duration-300 ease-in-out"
+                } else {
+                    "max-h-[500px] overflow-hidden transition-all duration-300 ease-in-out p-6"
+                };
+                match active_tab.get().as_str() {
                     "file" => {
                         view! {
-                            <div class="min-h-[150px] p-6">
+                            <div class=move || format!("{}", transition_class)>
                                 <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center space-y-4">
                                     <div>
                                         <input
@@ -320,7 +334,7 @@ pub fn FileReader(
                     }
                     "url" => {
                         view! {
-                            <div class="min-h-[150px] p-6">
+                            <div class=move || format!("{}", transition_class)>
                                 <div class="h-full flex items-center">
                                     <form on:submit=on_url_submit class="w-full">
                                         <div class="flex space-x-2">
@@ -352,7 +366,7 @@ pub fn FileReader(
                     }
                     "s3" => {
                         view! {
-                            <div class="min-h-[150px] p-6">
+                            <div class=move || format!("{}", transition_class)>
                                 <form on:submit=on_s3_submit class="space-y-4 w-full">
                                     <div class="flex flex-wrap gap-4">
                                         <div class="flex-1 min-w-[250px]">
