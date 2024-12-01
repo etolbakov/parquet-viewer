@@ -82,8 +82,8 @@ pub(crate) async fn execute_query_inner(
 
 #[component]
 pub fn QueryInput(
-    sql_query: ReadSignal<String>,
-    set_sql_query: WriteSignal<String>,
+    user_query: ReadSignal<String>,
+    set_user_query: WriteSignal<String>,
     error_message: WriteSignal<Option<String>>,
     file_name: ReadSignal<String>,
     execute_query: Arc<dyn Fn(String)>,
@@ -95,7 +95,7 @@ pub fn QueryInput(
             .local_storage()
             .unwrap()
             .unwrap()
-            .get_item("gemini_api_key")
+            .get_item("claude_api_key")
             .unwrap()
             .unwrap_or_default()
     });
@@ -103,7 +103,7 @@ pub fn QueryInput(
     create_effect(move |_| {
         if let Some(window) = web_sys::window() {
             if let Ok(Some(storage)) = window.local_storage() {
-                let _ = storage.set_item("gemini_api_key", &api_key.get());
+                let _ = storage.set_item("claude_api_key", &api_key.get());
             }
         }
     });
@@ -115,13 +115,12 @@ pub fn QueryInput(
     let file_name_s = file_name.get_untracked();
     let key_down = move |ev: web_sys::KeyboardEvent| {
         if ev.key() == "Enter" {
-            let input = sql_query.get_untracked();
+            let input = user_query.get_untracked();
             process_user_input(
                 input,
                 key_down_schema.clone(),
                 file_name_s.clone(),
                 key_down_exec.clone(),
-                set_sql_query.clone(),
                 api_key.get_untracked(),
                 error_message.clone(),
             );
@@ -132,13 +131,12 @@ pub fn QueryInput(
     let button_press_schema = schema.clone();
     let file_name_s = file_name.get_untracked();
     let button_press = move |_ev: web_sys::MouseEvent| {
-        let input = sql_query.get_untracked();
+        let input = user_query.get_untracked();
         process_user_input(
             input,
             button_press_schema.clone(),
             file_name_s.clone(),
             key_down_exec.clone(),
-            set_sql_query.clone(),
             api_key.get_untracked(),
             error_message.clone(),
         );
@@ -157,10 +155,10 @@ pub fn QueryInput(
                                 <div class="flex flex-col gap-2">
                                     <label class="text-sm text-gray-600">
                                         <a
-                                            href="https://aistudio.google.com/app/apikey"
+                                            href="https://console.anthropic.com/settings/keys"
                                             class="text-blue-500 hover:text-blue-700 underline"
                                         >
-                                            Gemini API
+                                            Anthropic API
                                         </a>
                                         Key
                                     </label>
@@ -179,7 +177,8 @@ pub fn QueryInput(
                 <input
                     type="text"
                     placeholder=default_query
-                    on:input=move |ev| set_sql_query(event_target_value(&ev))
+                    on:input=move |ev| set_user_query(event_target_value(&ev))
+                    prop:value=user_query
                     on:keydown=key_down
                     class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -206,14 +205,12 @@ fn process_user_input(
     schema: SchemaRef,
     file_name: String,
     exec: Arc<dyn Fn(String)>,
-    set_sql_query: WriteSignal<String>,
     api_key: String,
     error_message: WriteSignal<Option<String>>,
 ) {
     // if the input seems to be a SQL query, return it as is
     if input.starts_with("select") || input.starts_with("SELECT") {
         exec(input.clone());
-        set_sql_query(input);
         return;
     }
 
@@ -232,17 +229,16 @@ fn process_user_input(
         let prompt = prompt.clone();
         let api_key = api_key.clone();
         async move {
-            let sql = match generate_sql_via_gemini(prompt, api_key).await {
+            let sql = match generate_sql_via_claude(prompt, api_key).await {
                 Ok(response) => response,
                 Err(e) => {
                     web_sys::console::log_1(&e.clone().into());
-                    let gemini_error = format!("Failed to generate SQL through Gemini: {}", e);
-                    error_message.set(Some(gemini_error));
+                    let claude_error = format!("Failed to generate SQL through Claude: {}", e);
+                    error_message.set(Some(claude_error));
                     return;
                 }
             };
             web_sys::console::log_1(&sql.clone().into());
-            set_sql_query(sql.clone());
             exec(sql);
         }
     });
@@ -256,53 +252,38 @@ fn schema_to_brief_str(schema: SchemaRef) -> String {
     field_strs.collect::<Vec<_>>().join(", ")
 }
 
-// Asynchronous function to call the Gemini API
-async fn generate_sql_via_gemini(prompt: String, api_key: String) -> Result<String, String> {
-    // Remove the hardcoded key
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={}",
-        api_key
-    );
+// Asynchronous function to call the Claude API
+async fn generate_sql_via_claude(prompt: String, api_key: String) -> Result<String, String> {
+    let url = "https://api.anthropic.com/v1/messages";
 
-    // Build the JSON payload
     let payload = json!({
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {
-                        "text": prompt
-                    }
-                ]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 1,
-            "topK": 40,
-            "topP": 0.95,
-            "maxOutputTokens": 8192,
-            "responseMimeType": "application/json",
-            "responseSchema": {
-                "type": "object",
-                "properties": {
-                    "sql": {
-                        "type": "string"
-                    }
-                }
-            }
-        }
+        "model": "claude-3-haiku-20240307",
+        "max_tokens": 1024,
+        "messages": [{
+            "role": "user",
+            "content": prompt
+        }],
+        "system": "You are a SQL query generator. You should only respond with the generated SQL query. Do not include any explanation, JSON wrapping, or additional text."
     });
 
-    // Initialize Request
     let opts = RequestInit::new();
     opts.set_method("POST");
     opts.set_mode(RequestMode::Cors);
 
-    // Set headers
+    // Update headers according to docs
     let headers = Headers::new().map_err(|e| format!("Failed to create headers: {:?}", e))?;
     headers
-        .set("Content-Type", "application/json")
+        .set("content-type", "application/json")
         .map_err(|e| format!("Failed to set Content-Type: {:?}", e))?;
+    headers
+        .set("anthropic-version", "2023-06-01")
+        .map_err(|e| format!("Failed to set Anthropic version: {:?}", e))?;
+    headers
+        .set("x-api-key", &api_key)
+        .map_err(|e| format!("Failed to set API key: {:?}", e))?;
+    headers
+        .set("anthropic-dangerous-direct-browser-access", "true")
+        .map_err(|e| format!("Failed to set browser access header: {:?}", e))?;
     opts.set_headers(&headers);
 
     // Set body
@@ -341,7 +322,7 @@ async fn generate_sql_via_gemini(prompt: String, api_key: String) -> Result<Stri
     .await
     .map_err(|e| format!("JSON parsing error: {:?}", e))?;
 
-    // Parse the response to extract just the SQL query
+    // Simplified response parsing
     let json_value: serde_json::Value = serde_json::from_str(
         &js_sys::JSON::stringify(&json)
             .map_err(|e| format!("Failed to stringify JSON: {:?}", e))?
@@ -350,26 +331,15 @@ async fn generate_sql_via_gemini(prompt: String, api_key: String) -> Result<Stri
     )
     .map_err(|e| format!("Failed to parse JSON value: {:?}", e))?;
 
-    // Navigate the JSON structure to extract the SQL
+    // Extract the SQL directly from the content
     let sql = json_value
-        .get("candidates")
+        .get("content")
         .and_then(|c| c.get(0))
-        .and_then(|c| c.get("content"))
-        .and_then(|c| c.get("parts"))
-        .and_then(|p| p.get(0))
-        .and_then(|p| p.get("text"))
+        .and_then(|c| c.get("text"))
         .and_then(|t| t.as_str())
-        .ok_or("Failed to extract SQL from response")?;
-
-    // Parse the inner JSON string to get the final SQL
-    let sql_obj: serde_json::Value =
-        serde_json::from_str(sql).map_err(|e| format!("Failed to parse SQL JSON: {:?}", e))?;
-
-    let final_sql = sql_obj
-        .get("sql")
-        .and_then(|s| s.as_str())
-        .ok_or("Failed to extract SQL field")?
+        .ok_or("Failed to extract SQL from response")?
+        .trim()
         .to_string();
 
-    Ok(final_sql)
+    Ok(sql)
 }

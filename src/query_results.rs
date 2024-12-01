@@ -15,15 +15,18 @@ use leptos::*;
 #[component]
 pub fn QueryResults(
     sql_query: String,
+    set_user_query: WriteSignal<String>,
     query_result: Vec<RecordBatch>,
     physical_plan: Arc<dyn ExecutionPlan>,
 ) -> impl IntoView {
     let (active_tab, set_active_tab) = create_signal("results".to_string());
 
+    let sql = sql_query.clone();
     view! {
         <div class="mt-4 p-4 bg-white border border-gray-300 rounded-md">
-            <div class="mb-4 p-3 bg-gray-50 rounded border border-gray-200 font-mono text-sm overflow-x-auto">
-                {sql_query}
+            <div class="mb-4 p-3 bg-gray-50 rounded border border-gray-200 font-mono text-sm overflow-x-auto cursor-pointer"
+                on:click=move |_| set_user_query(sql_query.to_string())>
+                {sql}
             </div>
             <div class="mb-4 border-b border-gray-300">
                 <button

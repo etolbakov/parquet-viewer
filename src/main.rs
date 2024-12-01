@@ -162,6 +162,7 @@ fn App() -> impl IntoView {
     let (file_content, set_file_content) = create_signal(None::<ParquetInfo>);
     let (error_message, set_error_message) = create_signal(Option::<String>::None);
     let (file_bytes, set_file_bytes) = create_signal(None::<Bytes>);
+    let (user_query, set_user_query) = create_signal(String::new());
     let (sql_query, set_sql_query) = create_signal(String::new());
     let (query_result, set_query_result) = create_signal(Vec::<arrow::array::RecordBatch>::new());
     let (file_name, set_file_name) = create_signal(String::from("uploaded"));
@@ -187,10 +188,11 @@ fn App() -> impl IntoView {
             };
 
             wasm_bindgen_futures::spawn_local(async move {
-                match execute_query_async(query, bytes, table_name, parquet_info).await {
+                match execute_query_async(query.clone(), bytes, table_name, parquet_info).await {
                     Ok((results, physical_plan)) => {
                         set_physical_plan.set(Some(physical_plan));
                         set_query_result.set(results);
+                        set_sql_query.set(query);
                     }
                     Err(e) => set_error_message.set(Some(e)),
                 }
@@ -211,6 +213,7 @@ fn App() -> impl IntoView {
                     set_file_bytes.set(Some(bytes.clone()));
                     let default_query =
                         format!("select * from \"{}\" limit 10", file_name.get_untracked());
+                    set_user_query.set(default_query.clone());
                     set_sql_query.set(default_query.clone());
                     execute_query(default_query);
                 }
@@ -263,7 +266,7 @@ fn App() -> impl IntoView {
                                         "Tips:" <ul class="list-disc ml-6 mt-2 space-y-1">
                                             <li>"Make sure the URL has CORS enabled."</li>
                                             <li>
-                                                "If query with natural language, make sure to set the Gemini API key (free tier is enough)."
+                                                "If query with natural language, make sure to set the Anthropic API key."
                                             </li>
                                             <li>
                                                 "I usually download the file and use the file picker above."
@@ -284,8 +287,8 @@ fn App() -> impl IntoView {
 
                                         view! {
                                             <QueryInput
-                                                sql_query=sql_query
-                                                set_sql_query=set_sql_query
+                                                user_query=user_query
+                                                set_user_query=set_user_query
                                                 file_name=file_name
                                                 execute_query=Arc::new(execute_query)
                                                 schema=info.schema
@@ -307,7 +310,8 @@ fn App() -> impl IntoView {
                         let physical_plan = physical_plan.get().unwrap();
                         view! {
                             <QueryResults
-                                sql_query=sql_query.get_untracked()
+                                sql_query=sql_query.get()
+                                set_user_query=set_user_query
                                 query_result=result
                                 physical_plan=physical_plan
                             />
