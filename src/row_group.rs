@@ -272,9 +272,7 @@ pub fn RowGroupSection(
                             </div>
                             <div class="col-span-2 space-y-1">
                                 <div class="text-sm text-gray-500">"Statistics"</div>
-                                <div class="font-medium text-sm">
-                                    {stats_to_string(statistics)}
-                                </div>
+                                <div class="font-medium text-sm">{stats_to_string(statistics)}</div>
                             </div>
                         </div>
                     }

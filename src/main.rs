@@ -260,10 +260,11 @@ fn App() -> impl IntoView {
                                 <div class="bg-red-50 border-l-4 border-red-500 p-4 my-4">
                                     <div class="text-red-700">{msg}</div>
                                     <div class="mt-2 text-sm text-gray-600">
-                                        "Tips:"
-                                        <ul class="list-disc ml-6 mt-2 space-y-1">
+                                        "Tips:" <ul class="list-disc ml-6 mt-2 space-y-1">
                                             <li>"Make sure the URL has CORS enabled."</li>
-                                            <li>"If query with natural language, make sure to set the Gemini API key (free tier is enough)."</li>
+                                            <li>
+                                                "If query with natural language, make sure to set the Gemini API key (free tier is enough)."
+                                            </li>
                                             <li>
                                                 "I usually download the file and use the file picker above."
                                             </li>
@@ -275,12 +276,12 @@ fn App() -> impl IntoView {
                 }}
                 <div class="mt-4">
                     {move || {
-
                         file_bytes
                             .get()
                             .map(|_| {
                                 match file_content.get_untracked() {
                                     Some(info) => {
+
                                         view! {
                                             <QueryInput
                                                 sql_query=sql_query
@@ -291,7 +292,7 @@ fn App() -> impl IntoView {
                                                 error_message=set_error_message
                                             />
                                         }
-                                    },
+                                    }
                                     None => view! {}.into_view(),
                                 }
                             })
@@ -301,14 +302,17 @@ fn App() -> impl IntoView {
                 {move || {
                     let result = query_result.get();
                     if result.is_empty() {
-                        return view! {
-                        }.into_view();
+                        return view! {}.into_view();
                     } else {
                         let physical_plan = physical_plan.get().unwrap();
                         view! {
-                            <QueryResults sql_query=sql_query.get_untracked() query_result=result physical_plan=physical_plan />
+                            <QueryResults
+                                sql_query=sql_query.get_untracked()
+                                query_result=result
+                                physical_plan=physical_plan
+                            />
                         }
-                        .into_view()
+                            .into_view()
                     }
                 }}
 

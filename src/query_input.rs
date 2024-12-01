@@ -148,23 +148,34 @@ pub fn QueryInput(
 
     view! {
         <div class="flex gap-2 items-center flex-col relative">
-            {move || show_settings.get().then(|| view! {
-                <div class="absolute top-0 right-0 mt-12 bg-white shadow-lg rounded-md p-4 border border-gray-200 z-10">
-                    <div class="flex flex-col gap-2">
-                        <label class="text-sm text-gray-600">
-                            <a href="https://aistudio.google.com/app/apikey" class="text-blue-500 hover:text-blue-700 underline">Gemini API</a> Key
-                        </label>
-                        <input
-                            type="text"
-                            placeholder="Enter API Key"
-                            on:input=move |ev| set_api_key(event_target_value(&ev))
-                            value=api_key
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                    </div>
-                </div>
-            })}
-            <div class="w-full flex gap-2 items-center">
+            {move || {
+                show_settings
+                    .get()
+                    .then(|| {
+                        view! {
+                            <div class="absolute top-0 right-0 mt-12 bg-white shadow-lg rounded-md p-4 border border-gray-200 z-10">
+                                <div class="flex flex-col gap-2">
+                                    <label class="text-sm text-gray-600">
+                                        <a
+                                            href="https://aistudio.google.com/app/apikey"
+                                            class="text-blue-500 hover:text-blue-700 underline"
+                                        >
+                                            Gemini API
+                                        </a>
+                                        Key
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="Enter API Key"
+                                        on:input=move |ev| set_api_key(event_target_value(&ev))
+                                        value=api_key
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                            </div>
+                        }
+                    })
+            }} <div class="w-full flex gap-2 items-center">
                 <input
                     type="text"
                     placeholder=default_query

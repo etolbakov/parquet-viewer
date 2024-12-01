@@ -237,178 +237,208 @@ pub fn FileReader(
     };
 
     view! {
-        <div class="border-b border-gray-200">
-        <nav class="-mb-px flex space-x-8">
-            <button
-                class=move || {
-                    let base = "py-2 px-1 border-b-2 font-medium text-sm";
-                    if active_tab.get() == "file" {
-                        format!("{} border-blue-500 text-blue-600", base)
-                    } else {
-                        format!("{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300", base)
-                    }
-                }
-                on:click=move |_| set_active_tab.set("file")
-            >
-                "From file"
-            </button>
-            <button
-                class=move || {
-                    let base = "py-2 px-1 border-b-2 font-medium text-sm";
-                    if active_tab.get() == "url" {
-                        format!("{} border-blue-500 text-blue-600", base)
-                    } else {
-                        format!("{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300", base)
-                    }
-                }
-                on:click=move |_| set_active_tab.set("url")
-            >
-                "From URL"
-            </button>
-            <button
-                class=move || {
-                    let base = "py-2 px-1 border-b-2 font-medium text-sm";
-                    if active_tab.get() == "s3" {
-                        format!("{} border-blue-500 text-blue-600", base)
-                    } else {
-                        format!("{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300", base)
-                    }
-                }
-                on:click=move |_| set_active_tab.set("s3")
-            >
-                "From S3"
-            </button>
-        </nav>
-    </div>
+        <div class="bg-white rounded-lg border border-gray-300 p-3">
+            <div class="border-b border-gray-200">
+                <nav class="-mb-px flex space-x-8">
+                    <button
+                        class=move || {
+                            let base = "py-2 px-1 border-b-2 font-medium text-sm";
+                            if active_tab.get() == "file" {
+                                format!("{} border-blue-500 text-blue-600", base)
+                            } else {
+                                format!(
+                                    "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
+                                    base,
+                                )
+                            }
+                        }
+                        on:click=move |_| set_active_tab.set("file")
+                    >
+                        "From file"
+                    </button>
+                    <button
+                        class=move || {
+                            let base = "py-2 px-1 border-b-2 font-medium text-sm";
+                            if active_tab.get() == "url" {
+                                format!("{} border-blue-500 text-blue-600", base)
+                            } else {
+                                format!(
+                                    "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
+                                    base,
+                                )
+                            }
+                        }
+                        on:click=move |_| set_active_tab.set("url")
+                    >
+                        "From URL"
+                    </button>
+                    <button
+                        class=move || {
+                            let base = "py-2 px-1 border-b-2 font-medium text-sm";
+                            if active_tab.get() == "s3" {
+                                format!("{} border-blue-500 text-blue-600", base)
+                            } else {
+                                format!(
+                                    "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
+                                    base,
+                                )
+                            }
+                        }
+                        on:click=move |_| set_active_tab.set("s3")
+                    >
+                        "From S3"
+                    </button>
+                </nav>
+            </div>
 
-        {
-            move || {
+            {move || {
                 match active_tab.get() {
-            "file" => view! {
-                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center space-y-4">
-                    <div>
-                        <input
-                            type="file"
-                            accept=".parquet"
-                            on:change=on_file_select
-                            id="file-input"
-                        />
-                    </div>
-                    <div>
-                        <label for="file-input" class="cursor-pointer text-gray-600">
-                            "Drop Parquet file or click to browse"
-                        </label>
-                    </div>
-                </div>
-            }.into_view(),
-            "url" => view! {
-                <form on:submit=on_url_submit class="w-full">
-                    <div class="flex space-x-2">
-                        <input
-                            type="url"
-                            placeholder="Enter Parquet file URL"
-                            on:focus=move |ev| {
-                                let input: web_sys::HtmlInputElement = event_target(&ev);
-                                input.select();
-                            }
-                            on:input=move |ev| {
-                                set_url.set(event_target_value(&ev));
-                            }
-                            prop:value=url
-                            class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <button
-                            type="submit"
-                            class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-                        >
-                            "Load from URL"
-                        </button>
-                    </div>
-                </form>
-            }.into_view(),
-            "s3" => view! {
-                <form on:submit=on_s3_submit class="space-y-4 w-full">
-                    <div class="flex flex-wrap gap-4">
-                        <div class="flex-1 min-w-[250px]">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                "S3 Endpoint"
-                            </label>
-                            <input
-                                type="text"
-                                placeholder="https://s3.amazonaws.com"
-                                on:input=on_s3_endpoint_change
-                                prop:value=s3_endpoint
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-                        <div class="flex-1 min-w-[250px]">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                "Access Key ID"
-                            </label>
-                            <input
-                                type="text"
-                                on:input=on_s3_access_key_change
-                                prop:value=s3_access_key_id
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-                        <div class="flex-1 min-w-[250px]">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                "Secret Access Key"
-                            </label>
-                            <input
-                                type="password"
-                                on:input=on_s3_secret_key_change
-                                prop:value=s3_secret_key
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-                        <div class="flex-1 min-w-[250px]">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                "Bucket"
-                            </label>
-                            <input
-                                type="text"
-                                on:input=on_s3_bucket_change
-                                prop:value=s3_bucket
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-                        <div class="flex-1 min-w-[250px]">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                "Region"
-                            </label>
-                            <input
-                                type="text"
-                                on:input=on_s3_region_change
-                                prop:value=s3_region
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-                        <div class="flex-1 min-w-[250px]">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                "File Path"
-                            </label>
-                            <input
-                                type="text"
-                                on:input=on_s3_file_path_change
-                                prop:value=s3_file_path
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-                    </div>
-                    <div>
-                        <button
-                            type="submit"
-                            class="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-                        >
-                            "Read from S3"
-                        </button>
-                    </div>
-                </form>
-            }.into_view(),
-            _ => view! {}.into_view()
-        }
-            }
-        }}
+                    "file" => {
+                        view! {
+                            <div class="min-h-[150px] p-6">
+                                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center space-y-4">
+                                    <div>
+                                        <input
+                                            type="file"
+                                            accept=".parquet"
+                                            on:change=on_file_select
+                                            id="file-input"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label
+                                            for="file-input"
+                                            class="cursor-pointer text-gray-600"
+                                        >
+                                            "Drop Parquet file or click to browse"
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                            .into_view()
+                    }
+                    "url" => {
+                        view! {
+                            <div class="min-h-[150px] p-6">
+                                <div class="h-full flex items-center">
+                                    <form on:submit=on_url_submit class="w-full">
+                                        <div class="flex space-x-2">
+                                            <input
+                                                type="url"
+                                                placeholder="Enter Parquet file URL"
+                                                on:focus=move |ev| {
+                                                    let input: web_sys::HtmlInputElement = event_target(&ev);
+                                                    input.select();
+                                                }
+                                                on:input=move |ev| {
+                                                    set_url.set(event_target_value(&ev));
+                                                }
+                                                prop:value=url
+                                                class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                            <button
+                                                type="submit"
+                                                class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                                            >
+                                                "Load from URL"
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        }
+                            .into_view()
+                    }
+                    "s3" => {
+                        view! {
+                            <div class="min-h-[150px] p-6">
+                                <form on:submit=on_s3_submit class="space-y-4 w-full">
+                                    <div class="flex flex-wrap gap-4">
+                                        <div class="flex-1 min-w-[250px]">
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                                "S3 Endpoint"
+                                            </label>
+                                            <input
+                                                type="text"
+                                                placeholder="https://s3.amazonaws.com"
+                                                on:input=on_s3_endpoint_change
+                                                prop:value=s3_endpoint
+                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div class="flex-1 min-w-[250px]">
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                                "Access Key ID"
+                                            </label>
+                                            <input
+                                                type="text"
+                                                on:input=on_s3_access_key_change
+                                                prop:value=s3_access_key_id
+                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div class="flex-1 min-w-[250px]">
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                                "Secret Access Key"
+                                            </label>
+                                            <input
+                                                type="password"
+                                                on:input=on_s3_secret_key_change
+                                                prop:value=s3_secret_key
+                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div class="flex-1 min-w-[250px]">
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                                "Bucket"
+                                            </label>
+                                            <input
+                                                type="text"
+                                                on:input=on_s3_bucket_change
+                                                prop:value=s3_bucket
+                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div class="flex-1 min-w-[250px]">
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                                "Region"
+                                            </label>
+                                            <input
+                                                type="text"
+                                                on:input=on_s3_region_change
+                                                prop:value=s3_region
+                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div class="flex-1 min-w-[250px]">
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                                "File Path"
+                                            </label>
+                                            <input
+                                                type="text"
+                                                on:input=on_s3_file_path_change
+                                                prop:value=s3_file_path
+                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div class="flex-1 min-w-[150px] max-w-[250px] self-end">
+                                            <button
+                                                type="submit"
+                                                class="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                                            >
+                                                "Read from S3"
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        }
+                            .into_view()
+                    }
+                    _ => view! {}.into_view(),
+                }
+            }}
+        </div>
+    }
 }

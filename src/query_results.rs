@@ -27,21 +27,33 @@ pub fn QueryResults(
             </div>
             <div class="mb-4 border-b border-gray-300">
                 <button
-                    class=move || format!(
-                        "px-4 py-2 {} {}",
-                        if active_tab() == "results" { "border-b-2 border-blue-500 text-blue-600" } else { "text-gray-600" },
-                        "hover:text-blue-600"
-                    )
+                    class=move || {
+                        format!(
+                            "px-4 py-2 {} {}",
+                            if active_tab() == "results" {
+                                "border-b-2 border-blue-500 text-blue-600"
+                            } else {
+                                "text-gray-600"
+                            },
+                            "hover:text-blue-600",
+                        )
+                    }
                     on:click=move |_| set_active_tab("results".to_string())
                 >
                     "Query Results"
                 </button>
                 <button
-                    class=move || format!(
-                        "px-4 py-2 {} {}",
-                        if active_tab() == "physical_plan" { "border-b-2 border-blue-500 text-blue-600" } else { "text-gray-600" },
-                        "hover:text-blue-600"
-                    )
+                    class=move || {
+                        format!(
+                            "px-4 py-2 {} {}",
+                            if active_tab() == "physical_plan" {
+                                "border-b-2 border-blue-500 text-blue-600"
+                            } else {
+                                "text-gray-600"
+                            },
+                            "hover:text-blue-600",
+                        )
+                    }
                     on:click=move |_| set_active_tab("physical_plan".to_string())
                 >
                     "ExecutionPlan"
@@ -49,57 +61,68 @@ pub fn QueryResults(
             </div>
 
             {move || match active_tab().as_str() {
-                "results" => view! {
-                    <div class="max-h-[32rem] overflow-auto relative">
-                        <table class="min-w-full bg-white border border-gray-300 table-fixed">
-                            <thead class="sticky top-0 z-10">
-                                <tr class="bg-gray-100">
-                                    {
-                                        query_result[0].schema().fields().iter().map(|field| {
-                                            view! {
-                                                <th class="px-4 py-2 text-left border-b w-48 min-w-48 bg-gray-100">
-                                                    <div class="truncate" title={field.name()}>{field.name()}</div>
-                                                </th>
-                                            }
-                                        }).collect::<Vec<_>>()
-                                    }
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {
-                                    (0..query_result[0].num_rows()).map(|row_idx| {
-                                        view! {
-                                            <tr class="hover:bg-gray-50">
-                                                {
-                                                    (0..query_result[0].num_columns()).map(|col_idx| {
-                                                        let column = query_result[0].column(col_idx);
-                                                        let cell_value = if column.is_null(row_idx) {
-                                                            "NULL".to_string()
-                                                        } else {
-                                                            column.as_ref().value_to_string(row_idx)
-                                                        };
-
-                                                        view! {
-                                                            <td class="px-4 py-2 border-b w-48 min-w-48">
-                                                                <div class="overflow-x-auto whitespace-nowrap" title={cell_value.clone()}>
-                                                                    {cell_value}
-                                                                </div>
-                                                            </td>
-                                                        }
-                                                    }).collect::<Vec<_>>()
+                "results" => {
+                    view! {
+                        <div class="max-h-[32rem] overflow-auto relative">
+                            <table class="min-w-full bg-white border border-gray-300 table-fixed">
+                                <thead class="sticky top-0 z-10">
+                                    <tr class="bg-gray-100">
+                                        {query_result[0]
+                                            .schema()
+                                            .fields()
+                                            .iter()
+                                            .map(|field| {
+                                                view! {
+                                                    <th class="px-4 py-2 text-left border-b w-48 min-w-48 bg-gray-100">
+                                                        <div class="truncate" title=field.name()>
+                                                            {field.name()}
+                                                        </div>
+                                                    </th>
                                                 }
-                                            </tr>
-                                        }
-                                    }).collect::<Vec<_>>()
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }.into_view(),
-                "physical_plan" => view! {
-                    <PhysicalPlan physical_plan=physical_plan.clone() />
-                }.into_view(),
-                _ => view! { <p>"Invalid tab"</p> }.into_view()
+                                            })
+                                            .collect::<Vec<_>>()}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(0..query_result[0].num_rows())
+                                        .map(|row_idx| {
+                                            view! {
+                                                <tr class="hover:bg-gray-50">
+                                                    {(0..query_result[0].num_columns())
+                                                        .map(|col_idx| {
+                                                            let column = query_result[0].column(col_idx);
+                                                            let cell_value = if column.is_null(row_idx) {
+                                                                "NULL".to_string()
+                                                            } else {
+                                                                column.as_ref().value_to_string(row_idx)
+                                                            };
+
+                                                            view! {
+                                                                <td class="px-4 py-2 border-b w-48 min-w-48">
+                                                                    <div
+                                                                        class="overflow-x-auto whitespace-nowrap"
+                                                                        title=cell_value.clone()
+                                                                    >
+                                                                        {cell_value}
+                                                                    </div>
+                                                                </td>
+                                                            }
+                                                        })
+                                                        .collect::<Vec<_>>()}
+                                                </tr>
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()}
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                        .into_view()
+                }
+                "physical_plan" => {
+                    view! { <PhysicalPlan physical_plan=physical_plan.clone() /> }.into_view()
+                }
+                _ => view! { <p>"Invalid tab"</p> }.into_view(),
             }}
         </div>
     }
@@ -211,47 +234,64 @@ fn PlanNode(node: PlanNode) -> impl IntoView {
                 <div class="p-4 border rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
                     <div class="font-medium">{node.name}</div>
                     <div class="text-sm text-gray-700 mt-1 font-mono">{node.label}</div>
-                    {node.metrics.map(|m| view! {
-                        <div class="text-sm text-blue-600 mt-1 italic">{m}</div>
-                    })}
+                    {node
+                        .metrics
+                        .map(|m| {
+                            view! { <div class="text-sm text-blue-600 mt-1 italic">{m}</div> }
+                        })}
                 </div>
 
-                {(!node.children.is_empty()).then(|| view! {
-                    <div class="relative pt-4">
-                        <svg class="absolute top-0 left-1/2 -translate-x-[0.5px] h-4 w-1 z-10" overflow="visible">
-                        <line
-                            x1="0.5"
-                            y1="16"
-                            x2="0.5"
-                            y2="0"
-                            stroke="#D1D5DB"
-                            stroke-width="1"
-                            marker-end="url(#global-arrowhead)"
-                        />
-                    </svg>
-
-                        <div class="relative flex items-center justify-center">
-                            {(node.children.len() > 1).then(|| view! {
-                                <svg class="absolute top-0 h-[1px]" style="left: 25%; width: 50%;" overflow="visible">
+                {(!node.children.is_empty())
+                    .then(|| {
+                        view! {
+                            <div class="relative pt-4">
+                                <svg
+                                    class="absolute top-0 left-1/2 -translate-x-[0.5px] h-4 w-1 z-10"
+                                    overflow="visible"
+                                >
                                     <line
-                                        x1="0"
-                                        y1="0.5"
-                                        x2="100%"
-                                        y2="0.5"
+                                        x1="0.5"
+                                        y1="16"
+                                        x2="0.5"
+                                        y2="0"
                                         stroke="#D1D5DB"
                                         stroke-width="1"
+                                        marker-end="url(#global-arrowhead)"
                                     />
                                 </svg>
-                            })}
-                        </div>
 
-                        <div class="flex gap-8">
-                            {node.children.into_iter().map(|child| view! {
-                                <PlanNode node={child}/>
-                            }).collect::<Vec<_>>()}
-                        </div>
-                    </div>
-                })}
+                                <div class="relative flex items-center justify-center">
+                                    {(node.children.len() > 1)
+                                        .then(|| {
+                                            view! {
+                                                <svg
+                                                    class="absolute top-0 h-[1px]"
+                                                    style="left: 25%; width: 50%;"
+                                                    overflow="visible"
+                                                >
+                                                    <line
+                                                        x1="0"
+                                                        y1="0.5"
+                                                        x2="100%"
+                                                        y2="0.5"
+                                                        stroke="#D1D5DB"
+                                                        stroke-width="1"
+                                                    />
+                                                </svg>
+                                            }
+                                        })}
+                                </div>
+
+                                <div class="flex gap-8">
+                                    {node
+                                        .children
+                                        .into_iter()
+                                        .map(|child| view! { <PlanNode node=child /> })
+                                        .collect::<Vec<_>>()}
+                                </div>
+                            </div>
+                        }
+                    })}
             </div>
         </div>
     }
@@ -278,17 +318,15 @@ pub fn PhysicalPlan(physical_plan: Arc<dyn ExecutionPlan>) -> impl IntoView {
                         markerHeight="7"
                         refX="9"
                         refY="3.5"
-                        orient="auto">
-                        <polygon
-                            points="0 0, 10 3.5, 0 7"
-                            fill="#D1D5DB"
-                        />
+                        orient="auto"
+                    >
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#D1D5DB" />
                     </marker>
                 </defs>
             </svg>
 
             <div class="p-8 overflow-auto">
-                <PlanNode node={root}/>
+                <PlanNode node=root />
             </div>
         </div>
     }
