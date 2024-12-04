@@ -98,8 +98,12 @@ pub fn FileReader(
     let (is_folded, set_is_folded) = create_signal(false);
 
     let set_active_tab = move |tab: &str| {
-        set_active_tab.set(tab.to_string());
-        set_is_folded.set(false);
+        if active_tab.get() == tab {
+            set_is_folded.set(!is_folded.get());
+        } else {
+            set_active_tab.set(tab.to_string());
+            set_is_folded.set(false);
+        }
     };
 
     let on_file_select = move |ev: web_sys::Event| {
