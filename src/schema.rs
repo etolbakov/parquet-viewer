@@ -24,13 +24,23 @@ enum SortField {
 pub fn SchemaSection(parquet_info: super::ParquetInfo) -> impl IntoView {
     let schema = parquet_info.schema.clone();
     let metadata = parquet_info.metadata.clone();
-    let mut column_info =
-        vec![(0, 0, metadata.row_group(0).column(0).compression()); schema.fields.len()];
+    let mut column_info = vec![
+        (
+            0,
+            0,
+            metadata
+                .row_groups()
+                .first()
+                .map(|rg| rg.columns().first().map(|c| c.compression()))
+                .flatten(),
+        );
+        schema.fields.len()
+    ];
     for rg in metadata.row_groups() {
         for (i, col) in rg.columns().iter().enumerate() {
             column_info[i].0 += col.compressed_size() as u64;
             column_info[i].1 += col.uncompressed_size() as u64;
-            column_info[i].2 = col.compression();
+            column_info[i].2 = Some(col.compression());
         }
     }
 

@@ -9,6 +9,10 @@ pub fn InfoSection(parquet_info: super::ParquetInfo) -> impl IntoView {
         .unwrap_or("Unknown")
         .to_string();
     let version = parquet_info.metadata.file_metadata().version();
+    let has_bloom_filter = parquet_info.has_bloom_filter;
+    let has_page_index = parquet_info.has_page_index;
+    let has_column_index = parquet_info.has_column_index;
+    let has_row_group_stats = parquet_info.has_row_group_stats;
 
     // Create a signal for the selected row group
     let (selected_row_group, set_selected_row_group) = create_signal(0);
@@ -65,44 +69,52 @@ pub fn InfoSection(parquet_info: super::ParquetInfo) -> impl IntoView {
                 </div>
             </div>
 
-            <super::row_group::RowGroupSection
-                parquet_info=parquet_info.clone()
-                selected_row_group=selected_row_group
-                set_selected_row_group=set_selected_row_group
-            />
+            {move || {
+                if parquet_info.row_group_count > 0 {
+                    Some(view! {
+                        <super::row_group::RowGroupSection
+                            parquet_info=parquet_info.clone()
+                            selected_row_group=selected_row_group
+                            set_selected_row_group=set_selected_row_group
+                        />
+                    })
+                } else {
+                    None
+                }
+            }}
 
             <h2 class="text-xl font-semibold mt-6 mb-4">"Features"</h2>
             <div class="grid grid-cols-2 gap-2">
                 <div class="p-2 rounded ".to_owned()
-                    + if parquet_info.has_row_group_stats {
+                    + if has_row_group_stats {
                         "bg-green-100 text-green-800"
                     } else {
                         "bg-gray-100 text-gray-800"
                     }>
-                    {if parquet_info.has_row_group_stats { "✓" } else { "✗" }}
+                    {if has_row_group_stats { "✓" } else { "✗" }}
                     " Row Group Statistics"
                 </div>
                 <div class="p-2 rounded ".to_owned()
-                    + if parquet_info.has_column_index {
+                    + if has_column_index {
                         "bg-green-100 text-green-800"
                     } else {
                         "bg-gray-100 text-gray-800"
                     }>
-                    {if parquet_info.has_column_index { "✓" } else { "✗" }} " Column Index"
+                    {if has_column_index { "✓" } else { "✗" }} " Column Index"
                 </div>
                 <div class="p-2 rounded ".to_owned()
-                    + if parquet_info.has_page_index {
+                    + if has_page_index {
                         "bg-green-100 text-green-800"
                     } else {
                         "bg-gray-100 text-gray-800"
-                    }>{if parquet_info.has_page_index { "✓" } else { "✗" }} " Page Index"</div>
+                    }>{if has_page_index { "✓" } else { "✗" }} " Page Index"</div>
                 <div class="p-2 rounded ".to_owned()
-                    + if parquet_info.has_bloom_filter {
+                    + if has_bloom_filter {
                         "bg-green-100 text-green-800"
                     } else {
                         "bg-gray-100 text-gray-800"
                     }>
-                    {if parquet_info.has_bloom_filter { "✓" } else { "✗" }} " Bloom Filter"
+                    {if has_bloom_filter { "✓" } else { "✗" }} " Bloom Filter"
                 </div>
             </div>
         </div>

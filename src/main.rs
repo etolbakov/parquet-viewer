@@ -59,6 +59,8 @@ impl ParquetInfo {
             metadata.file_metadata().schema_descr(),
             metadata.file_metadata().key_value_metadata(),
         )?;
+        let first_row_group = metadata.row_groups().first();
+        let first_column = first_row_group.map(|rg| rg.columns().first()).flatten();
 
         Ok(Self {
             file_size: compressed_size,
@@ -67,14 +69,14 @@ impl ParquetInfo {
             row_group_count: metadata.num_row_groups() as u64,
             row_count: metadata.file_metadata().num_rows() as u64,
             columns: schema.fields.len() as u64,
-            has_row_group_stats: metadata.row_group(0).column(0).statistics().is_some(),
+            has_row_group_stats: first_column
+                .map(|c| c.statistics().is_some())
+                .unwrap_or(false),
             has_column_index: metadata.column_index().is_some(),
             has_page_index: metadata.offset_index().is_some(),
-            has_bloom_filter: metadata
-                .row_group(0)
-                .column(0)
-                .bloom_filter_offset()
-                .is_some(),
+            has_bloom_filter: first_column
+                .map(|c| c.bloom_filter_offset().is_some())
+                .unwrap_or(false),
             schema: Arc::new(schema),
             metadata: Arc::new(metadata),
             metadata_len,
@@ -284,16 +286,19 @@ fn App() -> impl IntoView {
                             .map(|_| {
                                 match file_content.get_untracked() {
                                     Some(info) => {
-
-                                        view! {
-                                            <QueryInput
+                                        if info.row_group_count > 0 {
+                                            view! {
+                                                <QueryInput
                                                 user_query=user_query
                                                 set_user_query=set_user_query
                                                 file_name=file_name
                                                 execute_query=Arc::new(execute_query)
-                                                schema=info.schema
-                                                error_message=set_error_message
-                                            />
+                                                    schema=info.schema
+                                                    error_message=set_error_message
+                                                />
+                                            }
+                                        } else {
+                                            view! {}.into_view()
                                         }
                                     }
                                     None => view! {}.into_view(),

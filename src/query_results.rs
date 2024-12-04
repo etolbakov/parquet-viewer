@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use arrow::array::Array;
+use arrow::array::{types::*, Array};
 use arrow::datatypes::DataType;
 use arrow::record_batch::RecordBatch;
 use datafusion::{
@@ -162,6 +162,51 @@ impl ArrayExt for dyn Array {
                 let array = as_binary_view_array(array).unwrap();
                 let value = array.value(index);
                 String::from_utf8_lossy(value).to_string()
+            }
+            DataType::Dictionary(key_type, _) => {
+                match key_type.as_ref() {
+                    DataType::Int8 => {
+                        let array = as_dictionary_array::<Int8Type>(array);
+                        let values = array.values();
+                        values.value_to_string(array.key(index).unwrap_or_default())
+                    }
+                    DataType::Int16 => {
+                        let array = as_dictionary_array::<Int16Type>(array);
+                        let values = array.values();
+                        values.value_to_string(array.key(index).unwrap_or_default())
+                    }
+                    DataType::Int32 => {
+                        let array = as_dictionary_array::<Int32Type>(array);
+                        let values = array.values();
+                        values.value_to_string(array.key(index).unwrap_or_default())
+                    }
+                    DataType::Int64 => {
+                        let array = as_dictionary_array::<Int64Type>(array);
+                        let values = array.values();
+                        values.value_to_string(array.key(index).unwrap_or_default())
+                    }
+                    DataType::UInt8 => {
+                        let array = as_dictionary_array::<UInt8Type>(array);
+                        let values = array.values();
+                        values.value_to_string(array.key(index).unwrap_or_default())
+                    }
+                    DataType::UInt16 => {
+                        let array = as_dictionary_array::<UInt16Type>(array);
+                        let values = array.values();
+                        values.value_to_string(array.key(index).unwrap_or_default())
+                    }
+                    DataType::UInt32 => {
+                        let array = as_dictionary_array::<UInt32Type>(array);
+                        let values = array.values();
+                        values.value_to_string(array.key(index).unwrap_or_default())
+                    }
+                    DataType::UInt64 => {
+                        let array = as_dictionary_array::<UInt64Type>(array);
+                        let values = array.values();
+                        values.value_to_string(array.key(index).unwrap_or_default())
+                    }
+                    _ => format!("Unsupported dictionary key type {}", key_type),
+                }
             }
             t => format!("Unsupported datatype {}", t)
         )

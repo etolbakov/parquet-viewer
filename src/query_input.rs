@@ -220,7 +220,7 @@ fn process_user_input(
     web_sys::console::log_1(&format!("Processing user input: {}", input).into());
 
     let prompt = format!(
-        "Generate a SQL query to answer the following question: {}. You should generate PostgreSQL SQL dialect, all field names should be double quoted, and the output SQL should be executable, be careful about the available columns. The table name is: {}, the schema of the table is: {}.  ",
+        "Generate a SQL query to answer the following question: {}. You should generate PostgreSQL SQL dialect, all field names and table names should be double quoted, and the output SQL should be executable, be careful about the available columns. The table name is: {}, the schema of the table is: {}.  ",
         input, file_name, schema_str
     );
     web_sys::console::log_1(&prompt.clone().into());
