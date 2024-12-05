@@ -8,8 +8,8 @@ mod file_reader;
 mod query_results;
 mod row_group;
 
-mod info;
-use info::InfoSection;
+mod metadata;
+use metadata::MetadataSection;
 
 use std::sync::Arc;
 
@@ -283,14 +283,15 @@ fn App() -> impl IntoView {
                                         if info.row_group_count > 0 {
                                             view! {
                                                 <QueryInput
-                                                user_query=user_query
-                                                set_user_query=set_user_query
-                                                file_name=file_name
-                                                execute_query=Arc::new(execute_query)
+                                                    user_query=user_query
+                                                    set_user_query=set_user_query
+                                                    file_name=file_name
+                                                    execute_query=Arc::new(execute_query)
                                                     schema=info.schema
                                                     error_message=set_error_message
                                                 />
-                                            }.into_any()
+                                            }
+                                                .into_any()
                                         } else {
                                             view! {}.into_any()
                                         }
@@ -325,11 +326,11 @@ fn App() -> impl IntoView {
                         match info {
                             Some(info) => {
                                 view! {
-                                    <div class="flex gap-6">
-                                        <div class="w-96 flex-none">
-                                            <InfoSection parquet_info=info.clone() />
+                                    <div class="space-y-6">
+                                        <div class="w-full">
+                                            <MetadataSection parquet_info=info.clone() />
                                         </div>
-                                        <div class="w-96 flex-1">
+                                        <div class="w-full">
                                             <SchemaSection parquet_info=info.clone() />
                                         </div>
                                     </div>

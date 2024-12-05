@@ -11,6 +11,84 @@ use datafusion::{
     },
 };
 use leptos::prelude::*;
+use parquet::arrow::ArrowWriter;
+use web_sys::js_sys;
+use web_sys::wasm_bindgen::JsCast;
+
+fn export_to_csv_inner(query_result: &Vec<RecordBatch>) {
+    let mut csv_data = String::new();
+    let headers: Vec<String> = query_result[0]
+        .schema()
+        .fields()
+        .iter()
+        .map(|field| field.name().clone())
+        .collect();
+    csv_data.push_str(&headers.join(","));
+    csv_data.push('\n');
+    for row_idx in 0..query_result[0].num_rows() {
+        let row: Vec<String> = (0..query_result[0].num_columns())
+            .map(|col_idx| {
+                let column = query_result[0].column(col_idx);
+                if column.is_null(row_idx) {
+                    "NULL".to_string()
+                } else {
+                    column.as_ref().value_to_string(row_idx)
+                }
+            })
+            .collect();
+        csv_data.push_str(&row.join(","));
+        csv_data.push('\n');
+    }
+    let blob = web_sys::Blob::new_with_str_sequence(&js_sys::Array::of1(&csv_data.into())).unwrap();
+    let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
+    let a = web_sys::window()
+        .unwrap()
+        .document()
+        .unwrap()
+        .create_element("a")
+        .unwrap();
+    a.set_attribute("href", &url).unwrap();
+    a.set_attribute("download", "query_results.csv").unwrap();
+    a.dyn_ref::<web_sys::HtmlElement>().unwrap().click();
+    web_sys::Url::revoke_object_url(&url).unwrap();
+}
+
+fn export_to_parquet_inner(query_result: &Vec<RecordBatch>) {
+    // Create an in-memory buffer to write the parquet data
+    let mut buf = Vec::new();
+
+    // Create a parquet writer
+    let mut writer = ArrowWriter::try_new(&mut buf, query_result[0].schema(), None)
+        .expect("Failed to create parquet writer");
+
+    // Write the record batch
+    writer
+        .write(&query_result[0])
+        .expect("Failed to write record batch");
+
+    // Close the writer to flush the data
+    writer.close().expect("Failed to close writer");
+
+    // Create a blob from the buffer
+    let array = js_sys::Uint8Array::from(&buf[..]);
+    let blob = web_sys::Blob::new_with_u8_array_sequence(&js_sys::Array::of1(&array))
+        .expect("Failed to create blob");
+
+    // Create a download link
+    let url =
+        web_sys::Url::create_object_url_with_blob(&blob).expect("Failed to create object URL");
+    let a = web_sys::window()
+        .unwrap()
+        .document()
+        .unwrap()
+        .create_element("a")
+        .unwrap();
+    a.set_attribute("href", &url).unwrap();
+    a.set_attribute("download", "query_results.parquet")
+        .unwrap();
+    a.dyn_ref::<web_sys::HtmlElement>().unwrap().click();
+    web_sys::Url::revoke_object_url(&url).unwrap();
+}
 
 #[component]
 pub fn QueryResults(
@@ -22,13 +100,16 @@ pub fn QueryResults(
     let (active_tab, set_active_tab) = signal("results".to_string());
 
     let sql = sql_query.clone();
+
     view! {
         <div class="mt-4 p-4 bg-white border border-gray-300 rounded-md">
-            <div class="mb-4 p-3 bg-gray-50 rounded border border-gray-200 font-mono text-sm overflow-x-auto cursor-pointer"
-                on:click=move |_| set_user_query(sql_query.to_string())>
+            <div
+                class="mb-4 p-3 bg-gray-50 rounded border border-gray-200 font-mono text-sm overflow-x-auto cursor-pointer"
+                on:click=move |_| set_user_query(sql_query.to_string())
+            >
                 {sql}
             </div>
-            <div class="mb-4 border-b border-gray-300">
+            <div class="mb-4 border-b border-gray-300 flex items-center">
                 <button
                     class=move || {
                         format!(
@@ -61,12 +142,36 @@ pub fn QueryResults(
                 >
                     "ExecutionPlan"
                 </button>
+
             </div>
 
             {move || match active_tab().as_str() {
                 "results" => {
+                    let query_result_csv = query_result.clone();
+                    let export_to_csv = move |_| {
+                        export_to_csv_inner(&query_result_csv);
+                    };
+
+                    let query_result_parquet = query_result.clone();
+                    let export_to_parquet = move |_| {
+                        export_to_parquet_inner(&query_result_parquet);
+                    };
+
                     view! {
                         <div class="max-h-[32rem] overflow-auto relative">
+
+                            <button
+                                class="mb-4 mx-2 px-2 py-1 border border-gray-500 text-gray-500 text-sm rounded hover:bg-gray-100"
+                                on:click=export_to_csv
+                            >
+                                "Export to CSV"
+                            </button>
+                            <button
+                                class="mb-4 mx-2 px-2 py-1 border border-gray-500 text-gray-500 text-sm rounded hover:bg-gray-100"
+                                on:click=export_to_parquet
+                            >
+                                "Export to Parquet"
+                            </button>
                             <table class="min-w-full bg-white border border-gray-300 table-fixed">
                                 <thead class="sticky top-0 z-10">
                                     <tr class="bg-gray-100">
@@ -79,6 +184,12 @@ pub fn QueryResults(
                                                     <th class="px-4 py-2 text-left border-b w-48 min-w-48 bg-gray-100">
                                                         <div class="truncate" title=field.name().clone()>
                                                             {field.name().clone()}
+                                                        </div>
+                                                        <div
+                                                            class="text-xs text-gray-600 truncate"
+                                                            title=field.data_type().to_string()
+                                                        >
+                                                            {field.data_type().to_string()}
                                                         </div>
                                                     </th>
                                                 }

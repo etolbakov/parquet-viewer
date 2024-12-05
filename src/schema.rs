@@ -115,43 +115,43 @@ pub fn SchemaSection(parquet_info: super::ParquetInfo) -> impl IntoView {
     }
 
     view! {
-        <div class="bg-white rounded-lg shadow-md p-6 flex-1 overflow-auto">
+        <div class="bg-white rounded-lg border border-gray-300 p-6 flex-1 overflow-auto">
             <h2 class="text-xl font-semibold mb-4">"Arrow Schema"</h2>
             <table class="min-w-full table-fixed">
                 <thead>
                     <tr class="bg-gray-50">
                         <th
-                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100 text-left"
                             on:click=move |_| sort_by(SortField::Id)
                         >
                             "ID"
                         </th>
                         <th
-                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100 text-left"
                             on:click=move |_| sort_by(SortField::Name)
                         >
                             "Name"
                         </th>
                         <th
-                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100 text-left"
                             on:click=move |_| sort_by(SortField::DataType)
                         >
                             "Type"
                         </th>
                         <th
-                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100 text-left"
                             on:click=move |_| sort_by(SortField::CompressedSize)
                         >
                             "Compressed"
                         </th>
                         <th
-                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100 text-left"
                             on:click=move |_| sort_by(SortField::UncompressedSize)
                         >
                             "Uncompressed"
                         </th>
                         <th
-                            class="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100 text-left"
                             on:click=move |_| sort_by(SortField::CompressionRatio)
                         >
                             "Ratio"
