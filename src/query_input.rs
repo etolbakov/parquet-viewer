@@ -11,10 +11,10 @@ use datafusion::{
     },
     prelude::SessionConfig,
 };
-use leptos::*;
+use leptos::prelude::*;
+use leptos::wasm_bindgen::{JsCast, JsValue};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use serde_json::json;
-use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{js_sys, Headers, Request, RequestInit, RequestMode, Response};
 
@@ -89,7 +89,7 @@ pub fn QueryInput(
     execute_query: Arc<dyn Fn(String)>,
     schema: SchemaRef,
 ) -> impl IntoView {
-    let (api_key, set_api_key) = create_signal({
+    let (api_key, set_api_key) = signal({
         let window = web_sys::window().unwrap();
         window
             .local_storage()
@@ -100,7 +100,7 @@ pub fn QueryInput(
             .unwrap_or_default()
     });
 
-    create_effect(move |_| {
+    Effect::new(move |_| {
         if let Some(window) = web_sys::window() {
             if let Ok(Some(storage)) = window.local_storage() {
                 let _ = storage.set_item("claude_api_key", &api_key.get());
@@ -108,7 +108,7 @@ pub fn QueryInput(
         }
     });
 
-    let (show_settings, set_show_settings) = create_signal(false);
+    let (show_settings, set_show_settings) = signal(false);
 
     let key_down_schema = schema.clone();
     let key_down_exec = execute_query.clone();
@@ -225,7 +225,7 @@ fn process_user_input(
     );
     web_sys::console::log_1(&prompt.clone().into());
 
-    spawn_local({
+    wasm_bindgen_futures::spawn_local({
         let prompt = prompt.clone();
         let api_key = api_key.clone();
         async move {

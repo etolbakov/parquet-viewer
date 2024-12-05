@@ -1,7 +1,7 @@
 use bytes::Bytes;
-use leptos::*;
+use leptos::prelude::*;
+use leptos::wasm_bindgen::{prelude::Closure, JsCast};
 use opendal::{services::S3, Operator};
-use wasm_bindgen::{prelude::Closure, JsCast};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys;
 
@@ -83,19 +83,19 @@ pub fn FileReader(
     set_file_name: WriteSignal<String>,
 ) -> impl IntoView {
     let default_url = "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet";
-    let (url, set_url) = create_signal(default_url.to_string());
-    let (active_tab, set_active_tab) = create_signal("file".to_string());
-    let (s3_endpoint, set_s3_endpoint) = create_signal(get_stored_value(
+    let (url, set_url) = signal(default_url.to_string());
+    let (active_tab, set_active_tab) = signal("file".to_string());
+    let (s3_endpoint, set_s3_endpoint) = signal(get_stored_value(
         S3_ENDPOINT_KEY,
         "https://s3.amazonaws.com",
     ));
     let (s3_access_key_id, set_s3_access_key_id) =
-        create_signal(get_stored_value(S3_ACCESS_KEY_ID_KEY, ""));
-    let (s3_secret_key, set_s3_secret_key) = create_signal(get_stored_value(S3_SECRET_KEY_KEY, ""));
-    let (s3_bucket, set_s3_bucket) = create_signal(get_stored_value(S3_BUCKET_KEY, ""));
-    let (s3_region, set_s3_region) = create_signal(get_stored_value(S3_REGION_KEY, "us-east-1"));
-    let (s3_file_path, set_s3_file_path) = create_signal(get_stored_value(S3_FILE_PATH_KEY, ""));
-    let (is_folded, set_is_folded) = create_signal(false);
+        signal(get_stored_value(S3_ACCESS_KEY_ID_KEY, ""));
+    let (s3_secret_key, set_s3_secret_key) = signal(get_stored_value(S3_SECRET_KEY_KEY, ""));
+    let (s3_bucket, set_s3_bucket) = signal(get_stored_value(S3_BUCKET_KEY, ""));
+    let (s3_region, set_s3_region) = signal(get_stored_value(S3_REGION_KEY, "us-east-1"));
+    let (s3_file_path, set_s3_file_path) = signal(get_stored_value(S3_FILE_PATH_KEY, ""));
+    let (is_folded, set_is_folded) = signal(false);
 
     let set_active_tab = move |tab: &str| {
         if active_tab.get() == tab {
@@ -334,7 +334,7 @@ pub fn FileReader(
                                 </div>
                             </div>
                         }
-                            .into_view()
+                            .into_any()
                     }
                     "url" => {
                         view! {
@@ -366,7 +366,7 @@ pub fn FileReader(
                                 </div>
                             </div>
                         }
-                            .into_view()
+                            .into_any()
                     }
                     "s3" => {
                         view! {
@@ -452,9 +452,9 @@ pub fn FileReader(
                                 </form>
                             </div>
                         }
-                            .into_view()
+                            .into_any()
                     }
-                    _ => view! {}.into_view(),
+                    _ => view! {}.into_any(),
                 }
             }}
         </div>

@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 
 #[derive(Clone, Debug, PartialEq)]
 struct ColumnData {
@@ -44,11 +44,11 @@ pub fn SchemaSection(parquet_info: super::ParquetInfo) -> impl IntoView {
         }
     }
 
-    let (sort_field, set_sort_field) = create_signal(SortField::Id);
-    let (sort_ascending, set_sort_ascending) = create_signal(true);
+    let (sort_field, set_sort_field) = signal(SortField::Id);
+    let (sort_ascending, set_sort_ascending) = signal(true);
 
     // Transform the data into ColumnData structs
-    let column_data = create_memo(move |_| {
+    let column_data = Memo::new(move |_| {
         let mut data: Vec<ColumnData> = schema
             .fields
             .iter()

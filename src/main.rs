@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use arrow::datatypes::SchemaRef;
 use bytes::Bytes;
-use leptos::*;
+use leptos::prelude::*;
 use parquet::{
     arrow::parquet_to_arrow_schema,
     errors::ParquetError,
@@ -161,14 +161,20 @@ async fn execute_query_async(
 
 #[component]
 fn App() -> impl IntoView {
-    let (file_content, set_file_content) = create_signal(None::<ParquetInfo>);
-    let (error_message, set_error_message) = create_signal(Option::<String>::None);
-    let (file_bytes, set_file_bytes) = create_signal(None::<Bytes>);
-    let (user_query, set_user_query) = create_signal(String::new());
-    let (sql_query, set_sql_query) = create_signal(String::new());
-    let (query_result, set_query_result) = create_signal(Vec::<arrow::array::RecordBatch>::new());
-    let (file_name, set_file_name) = create_signal(String::from("uploaded"));
-    let (physical_plan, set_physical_plan) = create_signal(None::<Arc<dyn ExecutionPlan>>);
+    let (error_message, set_error_message) = signal(Option::<String>::None);
+    let (file_bytes, set_file_bytes) = signal(None::<Bytes>);
+    let (user_query, set_user_query) = signal(String::new());
+    let (sql_query, set_sql_query) = signal(String::new());
+    let (query_result, set_query_result) = signal(Vec::<arrow::array::RecordBatch>::new());
+    let (file_name, set_file_name) = signal(String::from("uploaded"));
+    let (physical_plan, set_physical_plan) = signal(None::<Arc<dyn ExecutionPlan>>);
+
+    let file_content = move || {
+        file_bytes
+            .get()
+            .map(|bytes| get_parquet_info(bytes.clone()).ok())
+            .flatten()
+    };
 
     let execute_query = move |query: String| {
         let bytes_opt = file_bytes.get();
@@ -181,7 +187,7 @@ fn App() -> impl IntoView {
         }
 
         if let Some(bytes) = bytes_opt {
-            let parquet_info = match file_content.get_untracked() {
+            let parquet_info = match file_content() {
                 Some(content) => content,
                 None => {
                     set_error_message.set(Some("Failed to get file schema".into()));
@@ -203,33 +209,21 @@ fn App() -> impl IntoView {
             set_error_message.set(Some("No Parquet file loaded.".into()));
         }
     };
-
-    let on_bytes_load =
-        move |bytes: Bytes, file_content_setter: WriteSignal<Option<ParquetInfo>>| {
-            let parquet_info = get_parquet_info(bytes.clone());
-
-            match parquet_info {
-                Ok(info) => {
-                    web_sys::console::log_1(&info.to_string().into());
-                    file_content_setter.set(Some(info));
-                    set_file_bytes.set(Some(bytes.clone()));
-                    let default_query =
-                        format!("select * from \"{}\" limit 10", file_name.get_untracked());
-                    set_user_query.set(default_query.clone());
-                    set_sql_query.set(default_query.clone());
-                    execute_query(default_query);
-                }
-                Err(_e) => {
-                    file_content_setter.set(None);
-                }
+    Effect::watch(
+        move || file_content(),
+        move |info, _, _| match info {
+            Some(info) => {
+                web_sys::console::log_1(&info.to_string().into());
+                let default_query =
+                    format!("select * from \"{}\" limit 10", file_name.get_untracked());
+                set_user_query.set(default_query.clone());
+                set_sql_query.set(default_query.clone());
+                execute_query(default_query);
             }
-        };
-
-    create_effect(move |_| {
-        if let Some(bytes) = file_bytes.get() {
-            on_bytes_load(bytes, set_file_content);
-        }
-    });
+            _ => {}
+        },
+        true,
+    );
 
     view! {
         <div class="container mx-auto px-4 py-8 max-w-6xl">
@@ -284,7 +278,7 @@ fn App() -> impl IntoView {
                         file_bytes
                             .get()
                             .map(|_| {
-                                match file_content.get_untracked() {
+                                match file_content() {
                                     Some(info) => {
                                         if info.row_group_count > 0 {
                                             view! {
@@ -296,12 +290,12 @@ fn App() -> impl IntoView {
                                                     schema=info.schema
                                                     error_message=set_error_message
                                                 />
-                                            }
+                                            }.into_any()
                                         } else {
-                                            view! {}.into_view()
+                                            view! {}.into_any()
                                         }
                                     }
-                                    None => view! {}.into_view(),
+                                    None => view! {}.into_any(),
                                 }
                             })
                     }}
@@ -310,7 +304,7 @@ fn App() -> impl IntoView {
                 {move || {
                     let result = query_result.get();
                     if result.is_empty() {
-                        return view! {}.into_view();
+                        return view! {}.into_any();
                     } else {
                         let physical_plan = physical_plan.get().unwrap();
                         view! {
@@ -321,13 +315,13 @@ fn App() -> impl IntoView {
                                 physical_plan=physical_plan
                             />
                         }
-                            .into_view()
+                            .into_any()
                     }
                 }}
 
                 <div class="mt-8">
                     {move || {
-                        let info = file_content.get();
+                        let info = file_content();
                         match info {
                             Some(info) => {
                                 view! {
@@ -340,7 +334,7 @@ fn App() -> impl IntoView {
                                         </div>
                                     </div>
                                 }
-                                    .into_view()
+                                    .into_any()
                             }
                             None => {
                                 view! {
@@ -348,7 +342,7 @@ fn App() -> impl IntoView {
                                         "No file selected"
                                     </div>
                                 }
-                                    .into_view()
+                                    .into_any()
                             }
                         }
                     }}

@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 use parquet::file::statistics::Statistics;
 
 use crate::format_rows;
@@ -98,7 +98,7 @@ pub fn RowGroupSection(
     selected_row_group: ReadSignal<usize>,
     set_selected_row_group: WriteSignal<usize>,
 ) -> impl IntoView {
-    let (selected_column, set_selected_column) = create_signal(0);
+    let (selected_column, set_selected_column) = signal(0);
 
     let parquet_info_clone = parquet_info.clone();
     let row_group_info = move || {
@@ -219,7 +219,7 @@ pub fn RowGroupSection(
                             .map(|(i, field)| {
                                 view! {
                                     <option value=i.to_string() class="py-2">
-                                        {field.name()}
+                                        {field.name().clone()}
                                     </option>
                                 }
                             })

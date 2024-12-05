@@ -10,7 +10,7 @@ use datafusion::{
         ExecutionPlanVisitor,
     },
 };
-use leptos::*;
+use leptos::prelude::*;
 
 #[component]
 pub fn QueryResults(
@@ -19,7 +19,7 @@ pub fn QueryResults(
     query_result: Vec<RecordBatch>,
     physical_plan: Arc<dyn ExecutionPlan>,
 ) -> impl IntoView {
-    let (active_tab, set_active_tab) = create_signal("results".to_string());
+    let (active_tab, set_active_tab) = signal("results".to_string());
 
     let sql = sql_query.clone();
     view! {
@@ -77,8 +77,8 @@ pub fn QueryResults(
                                             .map(|field| {
                                                 view! {
                                                     <th class="px-4 py-2 text-left border-b w-48 min-w-48 bg-gray-100">
-                                                        <div class="truncate" title=field.name()>
-                                                            {field.name()}
+                                                        <div class="truncate" title=field.name().clone()>
+                                                            {field.name().clone()}
                                                         </div>
                                                     </th>
                                                 }
@@ -106,7 +106,7 @@ pub fn QueryResults(
                                                                         class="overflow-x-auto whitespace-nowrap"
                                                                         title=cell_value.clone()
                                                                     >
-                                                                        {cell_value}
+                                                                        {cell_value.clone()}
                                                                     </div>
                                                                 </td>
                                                             }
@@ -120,12 +120,12 @@ pub fn QueryResults(
                             </table>
                         </div>
                     }
-                        .into_view()
+                        .into_any()
                 }
                 "physical_plan" => {
-                    view! { <PhysicalPlan physical_plan=physical_plan.clone() /> }.into_view()
+                    view! { <PhysicalPlan physical_plan=physical_plan.clone() /> }.into_any()
                 }
-                _ => view! { <p>"Invalid tab"</p> }.into_view(),
+                _ => view! { <p>"Invalid tab"</p> }.into_any(),
             }}
         </div>
     }
@@ -343,6 +343,7 @@ fn PlanNode(node: PlanNode) -> impl IntoView {
             </div>
         </div>
     }
+    .into_any()
 }
 
 #[component]

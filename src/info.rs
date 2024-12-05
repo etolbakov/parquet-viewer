@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 
 #[component]
 pub fn InfoSection(parquet_info: super::ParquetInfo) -> impl IntoView {
@@ -15,7 +15,7 @@ pub fn InfoSection(parquet_info: super::ParquetInfo) -> impl IntoView {
     let has_row_group_stats = parquet_info.has_row_group_stats;
 
     // Create a signal for the selected row group
-    let (selected_row_group, set_selected_row_group) = create_signal(0);
+    let (selected_row_group, set_selected_row_group) = signal(0);
 
     view! {
         <div class="bg-white rounded-lg shadow-md p-6">
