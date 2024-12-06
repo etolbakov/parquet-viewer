@@ -123,7 +123,7 @@ pub fn FileReader(
                     set_is_folded.set(true);
                 }
                 Err(e) => {
-                    set_error_message.set(Some(format!("Failed to read from S3: {}", e)));
+                    set_error_message.set(Some(format!("Failed to read from HTTP: {}", e)));
                 }
             }
         });
