@@ -1,9 +1,8 @@
 use bytes::Bytes;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::{prelude::Closure, JsCast};
-use opendal::{services::S3, Operator};
-use wasm_bindgen_futures::JsFuture;
-use web_sys::js_sys;
+use opendal::{services::Http, services::S3, Operator};
+use web_sys::{js_sys, Url};
 
 const S3_ENDPOINT_KEY: &str = "s3_endpoint";
 const S3_ACCESS_KEY_ID_KEY: &str = "s3_access_key_id";
@@ -27,53 +26,6 @@ fn save_to_storage(key: &str, value: &str) {
             let _ = storage.set_item(key, value);
         }
     }
-}
-
-async fn fetch_parquet_from_url(url_str: String) -> Result<Bytes, String> {
-    let opts = web_sys::RequestInit::new();
-    opts.set_method("GET");
-
-    let headers = web_sys::Headers::new().map_err(|_| "Failed to create headers")?;
-    headers
-        .append("Accept", "*/*")
-        .map_err(|_| "Failed to set headers")?;
-    opts.set_headers(&headers);
-
-    let request = web_sys::Request::new_with_str_and_init(&url_str, &opts)
-        .map_err(|_| "Failed to create request")?;
-
-    let window = web_sys::window().ok_or("Failed to get window")?;
-    let resp = JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|_| "Failed to fetch the file. This might be due to CORS restrictions. Try using a direct link from S3 or a server that allows CORS.")?;
-
-    let resp: web_sys::Response = resp.dyn_into().map_err(|_| "Failed to convert response")?;
-
-    if !resp.ok() {
-        let status = resp.status();
-        let error_msg = match status {
-            0 => "Network error: The server might be blocking CORS requests.",
-            403 => "Access denied: The file is not publicly accessible.",
-            404 => "File not found: Please check if the URL is correct.",
-            _ => {
-                return Err(format!(
-                    "Server error (status {}): Please try a different source.",
-                    status
-                ))
-            }
-        };
-        return Err(error_msg.to_string());
-    }
-
-    let array_buffer = JsFuture::from(
-        resp.array_buffer()
-            .map_err(|_| "Failed to get array buffer")?,
-    )
-    .await
-    .map_err(|_| "Failed to convert array buffer")?;
-
-    let uint8_array = js_sys::Uint8Array::new(&array_buffer);
-    Ok(Bytes::from(uint8_array.to_vec()))
 }
 
 #[component]
@@ -139,7 +91,16 @@ pub fn FileReader(
         let url_str = url.get();
         set_error_message.set(None);
 
-        let table_name = url_str
+        let Ok(url) = Url::new(&url_str) else {
+            set_error_message.set(Some(format!("Invalid URL: {}", url_str)));
+            return;
+        };
+        // NOTE: protocol will include `:`, for example: `https:`
+        let endpoint = format!("{}//{}", url.protocol(), url.host());
+        // We don't support query so far.
+        let path = url.pathname();
+
+        let table_name = path
             .split('/')
             .last()
             .unwrap_or("uploaded.parquet")
@@ -149,12 +110,21 @@ pub fn FileReader(
         set_file_name.set(table_name);
 
         wasm_bindgen_futures::spawn_local(async move {
-            match fetch_parquet_from_url(url_str).await {
-                Ok(bytes) => {
-                    set_file_bytes.set(Some(bytes.clone()));
+            let builder = Http::default().endpoint(&endpoint);
+            let Ok(op) = Operator::new(builder) else {
+                set_error_message.set(Some("Failed to create HTTP operator".into()));
+                return;
+            };
+            let op = op.finish();
+
+            match op.read(&path).await {
+                Ok(bs) => {
+                    set_file_bytes.set(Some(bs.to_bytes()));
                     set_is_folded.set(true);
                 }
-                Err(error) => set_error_message.set(Some(error)),
+                Err(e) => {
+                    set_error_message.set(Some(format!("Failed to read from HTTP: {}", e)));
+                }
             }
         });
     };
@@ -197,8 +167,7 @@ pub fn FileReader(
                     let operator = op.finish();
                     match operator.read(&s3_file_path.get()).await {
                         Ok(bs) => {
-                            let bytes = Bytes::from(bs.to_vec());
-                            set_file_bytes.set(Some(bytes.clone()));
+                            set_file_bytes.set(Some(bs.to_bytes()));
                             set_is_folded.set(true);
                         }
                         Err(e) => {
