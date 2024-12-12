@@ -36,8 +36,13 @@ zstd = { version = "*", features = ["wasm", "thin"], default-features = false }
 zstd-sys = { version = "=2.0.9", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 opendal = { version = "0.50.2", default-features = false, features = [
-	"services-s3", "services-http"
+	"services-s3",
+	"services-http",
 ] }
+leptos-use = { git = "https://github.com/Synphonyte/leptos-use.git", features = [
+	"use_websocket",
+] }
+codee = { version = "0.2", features = ["msgpack_serde"] }
 
 [profile.release]
 strip = true

@@ -1,6 +1,10 @@
 mod schema;
+use codee::string::FromToStringCodec;
 use datafusion::physical_plan::ExecutionPlan;
 use file_reader::FileReader;
+use leptos_use::{
+    use_websocket_with_options, ReconnectLimit, UseWebSocketOptions, UseWebSocketReturn,
+};
 use query_results::QueryResults;
 use schema::SchemaSection;
 
@@ -159,6 +163,28 @@ async fn execute_query_async(
     Ok((results, physical_plan))
 }
 
+#[derive(Clone)]
+pub struct WebsocketContext {
+    pub message: Signal<Option<String>>,
+    send: Arc<dyn Fn(&String) + Send + Sync>,
+}
+
+impl WebsocketContext {
+    pub fn new(message: Signal<Option<String>>, send: Arc<dyn Fn(&String) + Send + Sync>) -> Self {
+        Self { message, send }
+    }
+
+    pub fn send(&self, message: &str) {
+        (self.send)(&message.to_string())
+    }
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct WebSocketMessage {
+    message_type: String,
+    query: Option<String>,
+}
+
 #[component]
 fn App() -> impl IntoView {
     let (error_message, set_error_message) = signal(Option::<String>::None);
@@ -209,6 +235,35 @@ fn App() -> impl IntoView {
             set_error_message.set(Some("No Parquet file loaded.".into()));
         }
     };
+
+    let UseWebSocketReturn { message, send, .. } =
+        use_websocket_with_options::<String, String, FromToStringCodec, String, FromToStringCodec>(
+            "ws://xiangpeng-ubuntu:12306",
+            UseWebSocketOptions::default()
+                .heartbeat(10000)
+                .on_message(move |msg: &String| {
+                    web_sys::console::log_1(&format!("Received message: {:?}", msg).into());
+                    if let Ok(ws_message) = serde_json::from_str::<WebSocketMessage>(msg) {
+                        if ws_message.message_type == "sql" {
+                            if let Some(query) = ws_message.query {
+                                // Execute the received SQL query
+                                set_user_query.set(query.clone());
+                                execute_query(query);
+                            }
+                        }
+                    }
+                })
+                .on_error(|e| {
+                    web_sys::console::error_1(&format!("WebSocket error: {:?}", e).into());
+                })
+                .on_close(move |_| {
+                    web_sys::console::log_1(&"WebSocket closed".into());
+                })
+                .reconnect_limit(ReconnectLimit::Infinite)
+                .reconnect_interval(500),
+        );
+    provide_context(WebsocketContext::new(message, Arc::new(send.clone())));
+
     Effect::watch(
         move || file_content(),
         move |info, _, _| match info {

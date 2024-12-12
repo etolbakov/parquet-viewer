@@ -4,9 +4,9 @@ Online at: https://parquet-viewer.xiangpeng.systems
 
 ### Features
 
+- Ask questions about Parquet data with natural language ✅
 - View Parquet metadata ✅
 - Explore Parquet data with SQL ✅
-- Ask questions about Parquet data with natural language ✅
 - View Parquet files from local file system, S3, and URLs ✅
 - Everything runs in the browser, no data upload ✅
 
