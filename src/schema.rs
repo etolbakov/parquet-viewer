@@ -31,8 +31,7 @@ pub fn SchemaSection(parquet_info: super::ParquetInfo) -> impl IntoView {
             metadata
                 .row_groups()
                 .first()
-                .map(|rg| rg.columns().first().map(|c| c.compression()))
-                .flatten(),
+                .and_then(|rg| rg.columns().first().map(|c| c.compression()))
         );
         schema.fields.len()
     ];

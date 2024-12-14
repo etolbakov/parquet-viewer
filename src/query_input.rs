@@ -66,7 +66,7 @@ pub(crate) async fn execute_query_inner(
 
     ctx.register_table(table_name, Arc::new(streaming_table))?;
 
-    let plan = ctx.sql(&query).await?;
+    let plan = ctx.sql(query).await?;
 
     let (state, plan) = plan.into_parts();
     let plan = state.optimize(&plan)?;
@@ -211,7 +211,7 @@ async fn generate_sql_via_claude(prompt: &str, api_key: &str) -> Result<String, 
         .set("anthropic-version", "2023-06-01")
         .map_err(|e| format!("Failed to set Anthropic version: {:?}", e))?;
     headers
-        .set("x-api-key", &api_key)
+        .set("x-api-key", api_key)
         .map_err(|e| format!("Failed to set API key: {:?}", e))?;
     headers
         .set("anthropic-dangerous-direct-browser-access", "true")
@@ -224,7 +224,7 @@ async fn generate_sql_via_claude(prompt: &str, api_key: &str) -> Result<String, 
     opts.set_body(&JsValue::from_str(&body));
 
     // Create Request
-    let request = Request::new_with_str_and_init(&url, &opts)
+    let request = Request::new_with_str_and_init(url, &opts)
         .map_err(|e| format!("Request creation failed: {:?}", e))?;
 
     // Send the request

@@ -15,7 +15,7 @@ use parquet::arrow::ArrowWriter;
 use web_sys::js_sys;
 use web_sys::wasm_bindgen::JsCast;
 
-fn export_to_csv_inner(query_result: &Vec<RecordBatch>) {
+fn export_to_csv_inner(query_result: &[RecordBatch]) {
     let mut csv_data = String::new();
     let headers: Vec<String> = query_result[0]
         .schema()
@@ -53,7 +53,7 @@ fn export_to_csv_inner(query_result: &Vec<RecordBatch>) {
     web_sys::Url::revoke_object_url(&url).unwrap();
 }
 
-fn export_to_parquet_inner(query_result: &Vec<RecordBatch>) {
+fn export_to_parquet_inner(query_result: &[RecordBatch]) {
     // Create an in-memory buffer to write the parquet data
     let mut buf = Vec::new();
 
@@ -361,7 +361,7 @@ struct DisplayPlan<'a> {
     plan: &'a dyn ExecutionPlan,
 }
 
-impl<'a> std::fmt::Display for DisplayPlan<'a> {
+impl std::fmt::Display for DisplayPlan<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.plan.fmt_as(DisplayFormatType::Default, f)
     }

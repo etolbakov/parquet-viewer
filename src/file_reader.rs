@@ -263,7 +263,7 @@ pub fn FileReader(
                 match active_tab.get().as_str() {
                     "file" => {
                         view! {
-                            <div class=move || format!("{}", transition_class)>
+                            <div class=move || transition_class.to_string()>
                                 <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center space-y-4">
                                     <div>
                                         <input
@@ -288,7 +288,7 @@ pub fn FileReader(
                     }
                     "url" => {
                         view! {
-                            <div class=move || format!("{}", transition_class)>
+                            <div class=move || transition_class.to_string()>
                                 <div class="h-full flex items-center">
                                     <form on:submit=on_url_submit class="w-full">
                                         <div class="flex space-x-2">
@@ -320,7 +320,7 @@ pub fn FileReader(
                     }
                     "s3" => {
                         view! {
-                            <div class=move || format!("{}", transition_class)>
+                            <div class=move || transition_class.to_string()>
                                 <form on:submit=on_s3_submit class="space-y-4 w-full">
                                     <div class="flex flex-wrap gap-4">
                                         <div class="flex-1 min-w-[250px]">
@@ -370,7 +370,7 @@ pub fn FileReader(
                         }
                             .into_any()
                     }
-                    _ => view! {}.into_any(),
+                    _ => ().into_any(),
                 }
             }}
         </div>

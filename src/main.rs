@@ -71,7 +71,7 @@ impl ParquetInfo {
             metadata.file_metadata().key_value_metadata(),
         )?;
         let first_row_group = metadata.row_groups().first();
-        let first_column = first_row_group.map(|rg| rg.columns().first()).flatten();
+        let first_column = first_row_group.and_then(|rg| rg.columns().first());
 
         Ok(Self {
             file_size: compressed_size,
@@ -228,6 +228,12 @@ impl ConnectionInfo {
     }
 }
 
+impl Default for ConnectionInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Display for ConnectionInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.display_time.get())
@@ -250,8 +256,7 @@ fn App() -> impl IntoView {
     let parquet_info = Memo::new(move |_| {
         file_bytes
             .get()
-            .map(|bytes| get_parquet_info(bytes.clone()).ok())
-            .flatten()
+            .and_then(|bytes| get_parquet_info(bytes.clone()).ok())
     });
 
     let ws_url = get_stored_value(WS_ENDPOINT_KEY, "ws://localhost:12306");
@@ -265,7 +270,7 @@ fn App() -> impl IntoView {
 
     let send = Arc::new(send);
     Effect::watch(
-        move || message.get(),
+        message,
         move |message, _, _| {
             if let Some(message) = message {
                 set_connection_info.update(|info| {
@@ -273,7 +278,7 @@ fn App() -> impl IntoView {
                     info.display_time.set("0s ago".to_string());
                 });
 
-                let message = serde_json::from_str::<WebSocketMessage>(&message).unwrap();
+                let message = serde_json::from_str::<WebSocketMessage>(message).unwrap();
                 match message {
                     WebSocketMessage::Sql { query } => {
                         // Send acknowledgment
@@ -321,21 +326,20 @@ fn App() -> impl IntoView {
     );
 
     Effect::watch(
-        move || parquet_info(),
-        move |info, _, _| match info {
-            Some(info) => {
+        parquet_info,
+        move |info, _, _| {
+            if let Some(info) = info {
                 logging::log!("{}", info.to_string());
                 let default_query =
                     format!("select * from \"{}\" limit 10", file_name.get_untracked());
                 set_user_input.set(default_query);
             }
-            _ => {}
         },
         true,
     );
 
     Effect::watch(
-        move || user_input.get(),
+        user_input,
         move |user_input, _, _| {
             let user_input = user_input.clone();
             let api_key = api_key.clone();
@@ -366,7 +370,7 @@ fn App() -> impl IntoView {
     );
 
     Effect::watch(
-        move || sql_query.get(),
+        sql_query,
         move |query, _, _| {
             let bytes_opt = file_bytes.get();
             let table_name = file_name.get();
@@ -504,10 +508,10 @@ fn App() -> impl IntoView {
                                             }
                                                 .into_any()
                                         } else {
-                                            view! {}.into_any()
+                                            ().into_any()
                                         }
                                     }
-                                    None => view! {}.into_any(),
+                                    None => ().into_any(),
                                 }
                             })
                     }}
@@ -516,7 +520,7 @@ fn App() -> impl IntoView {
                 {move || {
                     let result = query_result.get();
                     if result.is_empty() {
-                        return view! {}.into_any();
+                        ().into_any()
                     } else {
                         let physical_plan = physical_plan.get().unwrap();
                         view! {

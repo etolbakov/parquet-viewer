@@ -57,29 +57,37 @@ fn stats_to_string(stats: Option<Statistics>) -> String {
                     }
                 }
                 Statistics::ByteArray(s) => {
-                    s.min_opt()
-                        .and_then(|min| min.as_utf8().ok())
-                        .map(|min_utf8| parts.push(format!("min: {:?}", min_utf8)));
-                    s.max_opt()
-                        .and_then(|max| max.as_utf8().ok())
-                        .map(|max_utf8| parts.push(format!("max: {:?}", max_utf8)));
+                    if let Some(min) = s.min_opt() {
+                        if let Ok(min_utf8) = min.as_utf8() {
+                            parts.push(format!("min: {:?}", min_utf8));
+                        }
+                    }
+                    if let Some(max) = s.max_opt() {
+                        if let Ok(max_utf8) = max.as_utf8() {
+                            parts.push(format!("max: {:?}", max_utf8));
+                        }
+                    }
                 }
                 Statistics::FixedLenByteArray(s) => {
-                    s.min_opt()
-                        .and_then(|min| min.as_utf8().ok())
-                        .map(|min_utf8| parts.push(format!("min: {:?}", min_utf8)));
-                    s.max_opt()
-                        .and_then(|max| max.as_utf8().ok())
-                        .map(|max_utf8| parts.push(format!("max: {:?}", max_utf8)));
+                    if let Some(min) = s.min_opt() {
+                        if let Ok(min_utf8) = min.as_utf8() {
+                            parts.push(format!("min: {:?}", min_utf8));
+                        }
+                    }
+                    if let Some(max) = s.max_opt() {
+                        if let Ok(max_utf8) = max.as_utf8() {
+                            parts.push(format!("max: {:?}", max_utf8));
+                        }
+                    }
                 }
             }
 
             if let Some(null_count) = stats.null_count_opt() {
-                parts.push(format!("nulls: {}", format_rows(null_count as u64)));
+                parts.push(format!("nulls: {}", format_rows(null_count)));
             }
 
             if let Some(distinct_count) = stats.distinct_count_opt() {
-                parts.push(format!("distinct: {}", format_rows(distinct_count as u64)));
+                parts.push(format!("distinct: {}", format_rows(distinct_count)));
             }
 
             if parts.is_empty() {
