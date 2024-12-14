@@ -31,11 +31,11 @@ mod query_input;
 use query_input::{execute_query_inner, QueryInput};
 
 mod settings;
-use settings::{Settings, WS_ENDPOINT_KEY};
+use settings::{Settings, ANTHROPIC_API_KEY, WS_ENDPOINT_KEY};
 
 use std::fmt::Display;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct ParquetInfo {
     file_size: u64,
     uncompressed_size: u64,
@@ -221,54 +221,21 @@ impl Display for ConnectionInfo {
 fn App() -> impl IntoView {
     let (error_message, set_error_message) = signal(Option::<String>::None);
     let (file_bytes, set_file_bytes) = signal(None::<Bytes>);
-    let (user_query, set_user_query) = signal(String::new());
+    let (user_input, set_user_input) = signal(String::new());
     let (sql_query, set_sql_query) = signal(String::new());
     let (query_result, set_query_result) = signal(Vec::<arrow::array::RecordBatch>::new());
     let (file_name, set_file_name) = signal(String::from("uploaded"));
     let (physical_plan, set_physical_plan) = signal(None::<Arc<dyn ExecutionPlan>>);
     let (show_settings, set_show_settings) = signal(false);
     let (connection_info, set_connection_info) = signal(ConnectionInfo::new());
+    let api_key = get_stored_value(ANTHROPIC_API_KEY, "");
 
-    let file_content = move || {
+    let parquet_info = Memo::new(move |_| {
         file_bytes
             .get()
             .map(|bytes| get_parquet_info(bytes.clone()).ok())
             .flatten()
-    };
-
-    let execute_query = move |query: String| {
-        let bytes_opt = file_bytes.get();
-        let table_name = file_name.get();
-        set_error_message.set(None);
-
-        if query.trim().is_empty() {
-            set_error_message.set(Some("Please enter a SQL query.".into()));
-            return;
-        }
-
-        if let Some(bytes) = bytes_opt {
-            let parquet_info = match file_content() {
-                Some(content) => content,
-                None => {
-                    set_error_message.set(Some("Failed to get file schema".into()));
-                    return;
-                }
-            };
-
-            wasm_bindgen_futures::spawn_local(async move {
-                match execute_query_async(query.clone(), bytes, table_name, parquet_info).await {
-                    Ok((results, physical_plan)) => {
-                        set_physical_plan.set(Some(physical_plan));
-                        set_query_result.set(results);
-                        set_sql_query.set(query);
-                    }
-                    Err(e) => set_error_message.set(Some(e)),
-                }
-            });
-        } else {
-            set_error_message.set(Some("No Parquet file loaded.".into()));
-        }
-    };
+    });
 
     let ws_url = get_stored_value(WS_ENDPOINT_KEY, "ws://localhost:12306");
     let UseWebSocketReturn { message, send, .. } =
@@ -278,6 +245,7 @@ fn App() -> impl IntoView {
                 .reconnect_limit(ReconnectLimit::Infinite)
                 .reconnect_interval(500),
         );
+
     Effect::watch(
         move || message.get(),
         move |message, _, _| {
@@ -298,9 +266,7 @@ fn App() -> impl IntoView {
                             };
                             let ack_json = serde_json::to_string(&ack).unwrap();
                             send(&ack_json);
-                            // Execute the received SQL query
-                            set_user_query.set(query.clone());
-                            execute_query(query);
+                            set_user_input.set(query.clone());
                         }
                     }
                 }
@@ -310,17 +276,86 @@ fn App() -> impl IntoView {
     );
 
     Effect::watch(
-        move || file_content(),
+        move || parquet_info(),
         move |info, _, _| match info {
             Some(info) => {
                 web_sys::console::log_1(&info.to_string().into());
                 let default_query =
                     format!("select * from \"{}\" limit 10", file_name.get_untracked());
-                set_user_query.set(default_query.clone());
-                set_sql_query.set(default_query.clone());
-                execute_query(default_query);
+                set_user_input.set(default_query.clone());
             }
             _ => {}
+        },
+        true,
+    );
+
+    Effect::watch(
+        move || user_input.get(),
+        move |user_input, _, _| {
+            let user_input = user_input.clone();
+            let api_key = api_key.clone();
+            leptos::task::spawn_local(async move {
+                let Some(parquet_info) = parquet_info() else {
+                    return;
+                };
+                let sql = match query_input::user_input_to_sql(
+                    &user_input,
+                    &parquet_info.schema,
+                    &file_name(),
+                    &api_key,
+                )
+                .await
+                {
+                    Ok(response) => response,
+                    Err(e) => {
+                        web_sys::console::log_1(&e.clone().into());
+                        set_error_message.set(Some(e));
+                        return;
+                    }
+                };
+                web_sys::console::log_1(&sql.clone().into());
+                set_sql_query.set(sql);
+            });
+        },
+        true,
+    );
+
+    Effect::watch(
+        move || sql_query.get(),
+        move |query, _, _| {
+            let bytes_opt = file_bytes.get();
+            let table_name = file_name.get();
+            set_error_message.set(None);
+
+            if query.trim().is_empty() {
+                set_error_message.set(Some("Please enter a SQL query.".into()));
+                return;
+            }
+
+            if let Some(bytes) = bytes_opt {
+                let parquet_info = match parquet_info() {
+                    Some(content) => content,
+                    None => {
+                        set_error_message.set(Some("Failed to get file schema".into()));
+                        return;
+                    }
+                };
+
+                let query = query.clone();
+
+                leptos::task::spawn_local(async move {
+                    match execute_query_async(query.clone(), bytes, table_name, parquet_info).await
+                    {
+                        Ok((results, physical_plan)) => {
+                            set_physical_plan.set(Some(physical_plan));
+                            set_query_result.set(results);
+                        }
+                        Err(e) => set_error_message.set(Some(e)),
+                    }
+                });
+            } else {
+                set_error_message.set(Some("No Parquet file loaded.".into()));
+            }
         },
         true,
     );
@@ -414,17 +449,13 @@ fn App() -> impl IntoView {
                         file_bytes
                             .get()
                             .map(|_| {
-                                match file_content() {
+                                match parquet_info() {
                                     Some(info) => {
                                         if info.row_group_count > 0 {
                                             view! {
                                                 <QueryInput
-                                                    user_query=user_query
-                                                    set_user_query=set_user_query
-                                                    file_name=file_name
-                                                    execute_query=Arc::new(execute_query)
-                                                    schema=info.schema
-                                                    error_message=set_error_message
+                                                    user_input=user_input
+                                                    set_user_input=set_user_input
                                                 />
                                             }
                                                 .into_any()
@@ -447,7 +478,7 @@ fn App() -> impl IntoView {
                         view! {
                             <QueryResults
                                 sql_query=sql_query.get()
-                                set_user_query=set_user_query
+                                set_user_query=set_user_input
                                 query_result=result
                                 physical_plan=physical_plan
                             />
@@ -458,7 +489,7 @@ fn App() -> impl IntoView {
 
                 <div class="mt-8">
                     {move || {
-                        let info = file_content();
+                        let info = parquet_info();
                         match info {
                             Some(info) => {
                                 view! {

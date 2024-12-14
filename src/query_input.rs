@@ -82,12 +82,8 @@ pub(crate) async fn execute_query_inner(
 
 #[component]
 pub fn QueryInput(
-    user_query: ReadSignal<String>,
-    set_user_query: WriteSignal<String>,
-    error_message: WriteSignal<Option<String>>,
-    file_name: ReadSignal<String>,
-    execute_query: Arc<dyn Fn(String)>,
-    schema: SchemaRef,
+    user_input: ReadSignal<String>,
+    set_user_input: WriteSignal<String>,
 ) -> impl IntoView {
     let (api_key, _) = signal({
         let window = web_sys::window().unwrap();
@@ -108,48 +104,31 @@ pub fn QueryInput(
         }
     });
 
-    let key_down_schema = schema.clone();
-    let key_down_exec = execute_query.clone();
-    let file_name_s = file_name.get_untracked();
+    let (input_value, set_input_value) = signal(user_input.get_untracked());
+
+    Effect::new(move |_| {
+        set_input_value.set(user_input.get());
+    });
+
     let key_down = move |ev: web_sys::KeyboardEvent| {
         if ev.key() == "Enter" {
-            let input = user_query.get_untracked();
-            process_user_input(
-                input,
-                key_down_schema.clone(),
-                file_name_s.clone(),
-                key_down_exec.clone(),
-                api_key.get_untracked(),
-                error_message.clone(),
-            );
+            let input = input_value.get();
+            set_user_input.set(input.clone());
         }
     };
 
-    let key_down_exec = execute_query.clone();
-    let button_press_schema = schema.clone();
-    let file_name_s = file_name.get_untracked();
     let button_press = move |_ev: web_sys::MouseEvent| {
-        let input = user_query.get_untracked();
-        process_user_input(
-            input,
-            button_press_schema.clone(),
-            file_name_s.clone(),
-            key_down_exec.clone(),
-            api_key.get_untracked(),
-            error_message.clone(),
-        );
+        let input = input_value.get();
+        set_user_input.set(input.clone());
     };
-
-    let default_query = format!("select * from \"{}\" limit 10", file_name.get_untracked());
 
     view! {
         <div class="flex gap-2 items-center flex-col relative">
             <div class="w-full flex gap-2 items-center">
                 <input
                     type="text"
-                    placeholder=default_query
-                    on:input=move |ev| set_user_query(event_target_value(&ev))
-                    prop:value=user_query
+                    on:input=move |ev| set_input_value(event_target_value(&ev))
+                    prop:value=input_value
                     on:keydown=key_down
                     class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -164,18 +143,15 @@ pub fn QueryInput(
     }
 }
 
-fn process_user_input(
-    input: String,
-    schema: SchemaRef,
-    file_name: String,
-    exec: Arc<dyn Fn(String)>,
-    api_key: String,
-    error_message: WriteSignal<Option<String>>,
-) {
+pub(crate) async fn user_input_to_sql(
+    input: &str,
+    schema: &SchemaRef,
+    file_name: &str,
+    api_key: &str,
+) -> Result<String, String> {
     // if the input seems to be a SQL query, return it as is
     if input.starts_with("select") || input.starts_with("SELECT") {
-        exec(input.clone());
-        return;
+        return Ok(input.to_string());
     }
 
     // otherwise, treat it as some natural language
@@ -189,26 +165,19 @@ fn process_user_input(
     );
     web_sys::console::log_1(&prompt.clone().into());
 
-    wasm_bindgen_futures::spawn_local({
-        let prompt = prompt.clone();
-        let api_key = api_key.clone();
-        async move {
-            let sql = match generate_sql_via_claude(prompt, api_key).await {
-                Ok(response) => response,
-                Err(e) => {
-                    web_sys::console::log_1(&e.clone().into());
-                    let claude_error = format!("Failed to generate SQL through Claude: {}", e);
-                    error_message.set(Some(claude_error));
-                    return;
-                }
-            };
-            web_sys::console::log_1(&sql.clone().into());
-            exec(sql);
+    let sql = match generate_sql_via_claude(&prompt, api_key).await {
+        Ok(response) => response,
+        Err(e) => {
+            web_sys::console::log_1(&e.clone().into());
+            let claude_error = format!("Failed to generate SQL through Claude: {}", e);
+            return Err(claude_error);
         }
-    });
+    };
+    web_sys::console::log_1(&sql.clone().into());
+    Ok(sql)
 }
 
-fn schema_to_brief_str(schema: SchemaRef) -> String {
+fn schema_to_brief_str(schema: &SchemaRef) -> String {
     let fields = schema.fields();
     let field_strs = fields
         .iter()
@@ -217,7 +186,7 @@ fn schema_to_brief_str(schema: SchemaRef) -> String {
 }
 
 // Asynchronous function to call the Claude API
-async fn generate_sql_via_claude(prompt: String, api_key: String) -> Result<String, String> {
+async fn generate_sql_via_claude(prompt: &str, api_key: &str) -> Result<String, String> {
     let url = "https://api.anthropic.com/v1/messages";
 
     let payload = json!({

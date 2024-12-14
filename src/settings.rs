@@ -4,12 +4,12 @@ use leptos::prelude::*;
 use leptos::*;
 
 pub(crate) const WS_ENDPOINT_KEY: &str = "ws_endpoint";
-const ANTHROPIC_API_KEY: &str = "claude_api_key";
-const S3_ENDPOINT_KEY: &str = "s3_endpoint";
-const S3_ACCESS_KEY_ID_KEY: &str = "s3_access_key_id";
-const S3_SECRET_KEY_KEY: &str = "s3_secret_key";
+pub(crate) const ANTHROPIC_API_KEY: &str = "claude_api_key";
+pub(crate) const S3_ENDPOINT_KEY: &str = "s3_endpoint";
+pub(crate) const S3_ACCESS_KEY_ID_KEY: &str = "s3_access_key_id";
+pub(crate) const S3_SECRET_KEY_KEY: &str = "s3_secret_key";
 
-fn get_stored_value(key: &str, default: &str) -> String {
+pub(crate) fn get_stored_value(key: &str, default: &str) -> String {
     let window = web_sys::window().unwrap();
     let storage = window.local_storage().unwrap().unwrap();
     storage
