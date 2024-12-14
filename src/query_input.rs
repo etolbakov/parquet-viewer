@@ -11,8 +11,8 @@ use datafusion::{
     },
     prelude::SessionConfig,
 };
-use leptos::prelude::*;
 use leptos::wasm_bindgen::{JsCast, JsValue};
+use leptos::{logging, prelude::*};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use serde_json::json;
 use wasm_bindgen_futures::JsFuture;
@@ -49,7 +49,6 @@ pub(crate) async fn execute_query_inner(
     data: Bytes,
     query: &str,
 ) -> Result<(Vec<RecordBatch>, Arc<dyn ExecutionPlan>), DataFusionError> {
-    web_sys::console::log_1(&table_name.into());
     let mut config = SessionConfig::new();
     config.options_mut().sql_parser.dialect = "PostgreSQL".to_string();
 
@@ -72,7 +71,7 @@ pub(crate) async fn execute_query_inner(
     let (state, plan) = plan.into_parts();
     let plan = state.optimize(&plan)?;
 
-    web_sys::console::log_1(&plan.display_indent().to_string().into());
+    logging::log!("{}", &plan.display_indent());
 
     let physical_plan = state.create_physical_plan(&plan).await?;
 
@@ -157,23 +156,23 @@ pub(crate) async fn user_input_to_sql(
     // otherwise, treat it as some natural language
 
     let schema_str = schema_to_brief_str(schema);
-    web_sys::console::log_1(&format!("Processing user input: {}", input).into());
+    logging::log!("Processing user input: {}", input);
 
     let prompt = format!(
         "Generate a SQL query to answer the following question: {}. You should generate PostgreSQL SQL dialect, all field names and table names should be double quoted, and the output SQL should be executable, be careful about the available columns. The table name is: {}, the schema of the table is: {}.  ",
         input, file_name, schema_str
     );
-    web_sys::console::log_1(&prompt.clone().into());
+    logging::log!("{}", prompt);
 
     let sql = match generate_sql_via_claude(&prompt, api_key).await {
         Ok(response) => response,
         Err(e) => {
-            web_sys::console::log_1(&e.clone().into());
+            logging::log!("{}", e);
             let claude_error = format!("Failed to generate SQL through Claude: {}", e);
             return Err(claude_error);
         }
     };
-    web_sys::console::log_1(&sql.clone().into());
+    logging::log!("{}", sql);
     Ok(sql)
 }
 

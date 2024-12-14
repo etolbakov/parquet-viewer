@@ -10,7 +10,7 @@ use datafusion::{
         ExecutionPlanVisitor,
     },
 };
-use leptos::prelude::*;
+use leptos::{logging, prelude::*};
 use parquet::arrow::ArrowWriter;
 use web_sys::js_sys;
 use web_sys::wasm_bindgen::JsCast;
@@ -93,7 +93,6 @@ fn export_to_parquet_inner(query_result: &Vec<RecordBatch>) {
 #[component]
 pub fn QueryResults(
     sql_query: String,
-    set_user_query: WriteSignal<String>,
     query_result: Vec<RecordBatch>,
     physical_plan: Arc<dyn ExecutionPlan>,
 ) -> impl IntoView {
@@ -103,11 +102,32 @@ pub fn QueryResults(
 
     view! {
         <div class="mt-4 p-4 bg-white border border-gray-300 rounded-md">
-            <div
-                class="mb-4 p-3 bg-gray-50 rounded border border-gray-200 font-mono text-sm overflow-x-auto cursor-pointer"
-                on:click=move |_| set_user_query(sql_query.to_string())
-            >
-                {sql}
+            <div class="mb-4 p-3 bg-gray-50 rounded border border-gray-200 font-mono text-sm overflow-x-auto relative group">
+                {sql.clone()}
+                <button
+                    class="absolute top-2 right-2 p-2 text-gray-500 hover:text-gray-700"
+                    on:click=move |_| {
+                        let window = web_sys::window().unwrap();
+                        let navigator = window.navigator();
+                        let clipboard = navigator.clipboard();
+                        let _ = clipboard.write_text(&sql);
+                    }
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                        />
+                    </svg>
+                </button>
             </div>
             <div class="mb-4 border-b border-gray-300 flex items-center">
                 <button
@@ -465,7 +485,7 @@ pub fn PhysicalPlan(physical_plan: Arc<dyn ExecutionPlan>) -> impl IntoView {
     let displayable_plan = DisplayableExecutionPlan::with_metrics(physical_plan.as_ref());
     accept(physical_plan.as_ref(), &mut builder).unwrap();
     let root = builder.current_path.pop().unwrap();
-    web_sys::console::log_1(&displayable_plan.indent(true).to_string().into());
+    logging::log!("{}", displayable_plan.indent(true).to_string());
 
     view! {
         <div class="relative">

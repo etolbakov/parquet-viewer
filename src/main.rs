@@ -161,8 +161,6 @@ async fn execute_query_async(
     table_name: String,
     parquet_info: ParquetInfo,
 ) -> Result<(Vec<arrow::array::RecordBatch>, Arc<dyn ExecutionPlan>), String> {
-    web_sys::console::log_1(&table_name.clone().into());
-
     let (results, physical_plan) = execute_query_inner(&table_name, parquet_info, bytes, &query)
         .await
         .map_err(|e| format!("Failed to execute query: {}", e))?;
@@ -287,12 +285,10 @@ fn App() -> impl IntoView {
                         file_name,
                         server_address,
                     } => {
-                        web_sys::console::log_1(
-                            &format!(
-                                "Received file: {}, server_address: {}",
-                                file_name, server_address
-                            )
-                            .into(),
+                        logging::log!(
+                            "Received file: {}, server_address: {}",
+                            file_name,
+                            server_address
                         );
                         let builder = Http::default().endpoint(&server_address);
                         let Ok(op) = Operator::new(builder) else {
@@ -328,7 +324,7 @@ fn App() -> impl IntoView {
         move || parquet_info(),
         move |info, _, _| match info {
             Some(info) => {
-                web_sys::console::log_1(&info.to_string().into());
+                logging::log!("{}", info.to_string());
                 let default_query =
                     format!("select * from \"{}\" limit 10", file_name.get_untracked());
                 set_user_input.set(default_query);
@@ -357,12 +353,12 @@ fn App() -> impl IntoView {
                 {
                     Ok(response) => response,
                     Err(e) => {
-                        web_sys::console::log_1(&e.clone().into());
+                        logging::log!("{}", e);
                         set_error_message.set(Some(e));
                         return;
                     }
                 };
-                web_sys::console::log_1(&sql.clone().into());
+                logging::log!("{}", sql);
                 set_sql_query.set(sql);
             });
         },
@@ -526,7 +522,6 @@ fn App() -> impl IntoView {
                         view! {
                             <QueryResults
                                 sql_query=sql_query.get()
-                                set_user_query=set_user_input
                                 query_result=result
                                 physical_plan=physical_plan
                             />
@@ -565,7 +560,11 @@ fn App() -> impl IntoView {
                 </div>
 
             </div>
-            <Settings show=show_settings set_show=set_show_settings connection_info=connection_info />
+            <Settings
+                show=show_settings
+                set_show=set_show_settings
+                connection_info=connection_info
+            />
         </div>
     }
 }
