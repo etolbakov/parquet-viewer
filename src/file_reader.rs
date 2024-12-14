@@ -11,7 +11,7 @@ const S3_BUCKET_KEY: &str = "s3_bucket";
 const S3_REGION_KEY: &str = "s3_region";
 const S3_FILE_PATH_KEY: &str = "s3_file_path";
 
-fn get_stored_value(key: &str, default: &str) -> String {
+pub(crate) fn get_stored_value(key: &str, default: &str) -> String {
     let window = web_sys::window().unwrap();
     let storage = window.local_storage().unwrap().unwrap();
     storage
@@ -37,13 +37,12 @@ pub fn FileReader(
     let default_url = "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet";
     let (url, set_url) = signal(default_url.to_string());
     let (active_tab, set_active_tab) = signal("file".to_string());
-    let (s3_endpoint, set_s3_endpoint) = signal(get_stored_value(
+    let (s3_endpoint, _) = signal(get_stored_value(
         S3_ENDPOINT_KEY,
         "https://s3.amazonaws.com",
     ));
-    let (s3_access_key_id, set_s3_access_key_id) =
-        signal(get_stored_value(S3_ACCESS_KEY_ID_KEY, ""));
-    let (s3_secret_key, set_s3_secret_key) = signal(get_stored_value(S3_SECRET_KEY_KEY, ""));
+    let (s3_access_key_id, _) = signal(get_stored_value(S3_ACCESS_KEY_ID_KEY, ""));
+    let (s3_secret_key, _) = signal(get_stored_value(S3_SECRET_KEY_KEY, ""));
     let (s3_bucket, set_s3_bucket) = signal(get_stored_value(S3_BUCKET_KEY, ""));
     let (s3_region, set_s3_region) = signal(get_stored_value(S3_REGION_KEY, "us-east-1"));
     let (s3_file_path, set_s3_file_path) = signal(get_stored_value(S3_FILE_PATH_KEY, ""));
@@ -180,24 +179,6 @@ pub fn FileReader(
                 }
             }
         });
-    };
-
-    let on_s3_endpoint_change = move |ev| {
-        let value = event_target_value(&ev);
-        save_to_storage(S3_ENDPOINT_KEY, &value);
-        set_s3_endpoint.set(value);
-    };
-
-    let on_s3_access_key_change = move |ev| {
-        let value = event_target_value(&ev);
-        save_to_storage(S3_ACCESS_KEY_ID_KEY, &value);
-        set_s3_access_key_id.set(value);
-    };
-
-    let on_s3_secret_key_change = move |ev| {
-        let value = event_target_value(&ev);
-        save_to_storage(S3_SECRET_KEY_KEY, &value);
-        set_s3_secret_key.set(value);
     };
 
     let on_s3_bucket_change = move |ev| {
@@ -342,40 +323,6 @@ pub fn FileReader(
                             <div class=move || format!("{}", transition_class)>
                                 <form on:submit=on_s3_submit class="space-y-4 w-full">
                                     <div class="flex flex-wrap gap-4">
-                                        <div class="flex-1 min-w-[250px]">
-                                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                                "S3 Endpoint"
-                                            </label>
-                                            <input
-                                                type="text"
-                                                placeholder="https://s3.amazonaws.com"
-                                                on:input=on_s3_endpoint_change
-                                                prop:value=s3_endpoint
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                        <div class="flex-1 min-w-[250px]">
-                                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                                "Access Key ID"
-                                            </label>
-                                            <input
-                                                type="text"
-                                                on:input=on_s3_access_key_change
-                                                prop:value=s3_access_key_id
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                        <div class="flex-1 min-w-[250px]">
-                                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                                "Secret Access Key"
-                                            </label>
-                                            <input
-                                                type="password"
-                                                on:input=on_s3_secret_key_change
-                                                prop:value=s3_secret_key
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
                                         <div class="flex-1 min-w-[250px]">
                                             <label class="block text-sm font-medium text-gray-700 mb-1">
                                                 "Bucket"

@@ -39,7 +39,7 @@ opendal = { version = "0.50.2", default-features = false, features = [
 	"services-s3",
 	"services-http",
 ] }
-leptos-use = { git = "https://github.com/Synphonyte/leptos-use.git", features = [
+leptos-use = { version = "0.14.0", features = [
 	"use_websocket",
 ] }
 codee = { version = "0.2", features = ["msgpack_serde"] }

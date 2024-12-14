@@ -89,7 +89,7 @@ pub fn QueryInput(
     execute_query: Arc<dyn Fn(String)>,
     schema: SchemaRef,
 ) -> impl IntoView {
-    let (api_key, set_api_key) = signal({
+    let (api_key, _) = signal({
         let window = web_sys::window().unwrap();
         window
             .local_storage()
@@ -107,8 +107,6 @@ pub fn QueryInput(
             }
         }
     });
-
-    let (show_settings, set_show_settings) = signal(false);
 
     let key_down_schema = schema.clone();
     let key_down_exec = execute_query.clone();
@@ -146,34 +144,7 @@ pub fn QueryInput(
 
     view! {
         <div class="flex gap-2 items-center flex-col relative">
-            {move || {
-                show_settings
-                    .get()
-                    .then(|| {
-                        view! {
-                            <div class="absolute top-0 right-0 mt-12 bg-white shadow-lg rounded-md p-4 border border-gray-200 z-10">
-                                <div class="flex flex-col gap-2">
-                                    <label class="text-sm text-gray-600">
-                                        <a
-                                            href="https://console.anthropic.com/settings/keys"
-                                            class="text-blue-500 hover:text-blue-700 underline"
-                                        >
-                                            Anthropic API
-                                        </a>
-                                        Key
-                                    </label>
-                                    <input
-                                        type="text"
-                                        placeholder="Enter API Key"
-                                        on:input=move |ev| set_api_key(event_target_value(&ev))
-                                        value=api_key
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                </div>
-                            </div>
-                        }
-                    })
-            }} <div class="w-full flex gap-2 items-center">
+            <div class="w-full flex gap-2 items-center">
                 <input
                     type="text"
                     placeholder=default_query
@@ -187,13 +158,6 @@ pub fn QueryInput(
                     class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 whitespace-nowrap"
                 >
                     "Run Query"
-                </button>
-                <button
-                    on:click=move |_| set_show_settings.update(|v| *v = !*v)
-                    class="px-3 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200"
-                    title="Settings"
-                >
-                    "..."
                 </button>
             </div>
         </div>

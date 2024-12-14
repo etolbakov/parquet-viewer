@@ -1948,7 +1948,8 @@ dependencies = [
 [[package]]
 name = "leptos-use"
 version = "0.14.0"
-source = "git+https://github.com/Synphonyte/leptos-use.git#85fcf135df015e91147caf06b7d8760b052b78f0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b50a99041c6685fdbca516bf6f90e75013e00a093d231c5f6a73b7b9dfff633"
 dependencies = [
  "cfg-if",
  "codee",

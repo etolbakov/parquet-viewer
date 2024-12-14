@@ -151,7 +151,6 @@ pub fn QueryResults(
                     let export_to_csv = move |_| {
                         export_to_csv_inner(&query_result_csv);
                     };
-
                     let query_result_parquet = query_result.clone();
                     let export_to_parquet = move |_| {
                         export_to_parquet_inner(&query_result_parquet);
@@ -181,7 +180,7 @@ pub fn QueryResults(
                                             .iter()
                                             .map(|field| {
                                                 view! {
-                                                    <th class="px-4 py-2 text-left border-b w-48 min-w-48 bg-gray-100">
+                                                    <th class="px-4 py-1 text-left border-b w-48 min-w-48 bg-gray-100 leading-tight text-gray-700">
                                                         <div class="truncate" title=field.name().clone()>
                                                             {field.name().clone()}
                                                         </div>
@@ -212,7 +211,7 @@ pub fn QueryResults(
                                                             };
 
                                                             view! {
-                                                                <td class="px-4 py-2 border-b w-48 min-w-48">
+                                                                <td class="px-4 py-1 border-b w-48 min-w-48 leading-tight text-gray-700">
                                                                     <div
                                                                         class="overflow-x-auto whitespace-nowrap"
                                                                         title=cell_value.clone()

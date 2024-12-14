@@ -1,9 +1,10 @@
 mod schema;
 use codee::string::FromToStringCodec;
 use datafusion::physical_plan::ExecutionPlan;
-use file_reader::FileReader;
+use file_reader::{get_stored_value, FileReader};
 use leptos_use::{
-    use_websocket_with_options, ReconnectLimit, UseWebSocketOptions, UseWebSocketReturn,
+    use_interval_fn, use_timestamp, use_websocket_with_options, ReconnectLimit,
+    UseWebSocketOptions, UseWebSocketReturn,
 };
 use query_results::QueryResults;
 use schema::SchemaSection;
@@ -28,6 +29,11 @@ use parquet::{
 
 mod query_input;
 use query_input::{execute_query_inner, QueryInput};
+
+mod settings;
+use settings::{Settings, WS_ENDPOINT_KEY};
+
+use std::fmt::Display;
 
 #[derive(Debug, Clone)]
 struct ParquetInfo {
@@ -185,6 +191,32 @@ struct WebSocketMessage {
     query: Option<String>,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+struct AckMessage {
+    message_type: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConnectionInfo {
+    pub last_message_time: Option<f64>,
+    pub display_time: RwSignal<String>,
+}
+
+impl ConnectionInfo {
+    pub fn new() -> Self {
+        Self {
+            last_message_time: None,
+            display_time: RwSignal::new("never".to_string()),
+        }
+    }
+}
+
+impl Display for ConnectionInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.display_time.get())
+    }
+}
+
 #[component]
 fn App() -> impl IntoView {
     let (error_message, set_error_message) = signal(Option::<String>::None);
@@ -194,6 +226,8 @@ fn App() -> impl IntoView {
     let (query_result, set_query_result) = signal(Vec::<arrow::array::RecordBatch>::new());
     let (file_name, set_file_name) = signal(String::from("uploaded"));
     let (physical_plan, set_physical_plan) = signal(None::<Arc<dyn ExecutionPlan>>);
+    let (show_settings, set_show_settings) = signal(false);
+    let (connection_info, set_connection_info) = signal(ConnectionInfo::new());
 
     let file_content = move || {
         file_bytes
@@ -236,33 +270,44 @@ fn App() -> impl IntoView {
         }
     };
 
+    let ws_url = get_stored_value(WS_ENDPOINT_KEY, "ws://localhost:12306");
     let UseWebSocketReturn { message, send, .. } =
-        use_websocket_with_options::<String, String, FromToStringCodec, String, FromToStringCodec>(
-            "ws://xiangpeng-ubuntu:12306",
+        use_websocket_with_options::<String, String, FromToStringCodec>(
+            &ws_url,
             UseWebSocketOptions::default()
-                .heartbeat(10000)
-                .on_message(move |msg: &String| {
-                    web_sys::console::log_1(&format!("Received message: {:?}", msg).into());
-                    if let Ok(ws_message) = serde_json::from_str::<WebSocketMessage>(msg) {
-                        if ws_message.message_type == "sql" {
-                            if let Some(query) = ws_message.query {
-                                // Execute the received SQL query
-                                set_user_query.set(query.clone());
-                                execute_query(query);
-                            }
-                        }
-                    }
-                })
-                .on_error(|e| {
-                    web_sys::console::error_1(&format!("WebSocket error: {:?}", e).into());
-                })
-                .on_close(move |_| {
-                    web_sys::console::log_1(&"WebSocket closed".into());
-                })
                 .reconnect_limit(ReconnectLimit::Infinite)
                 .reconnect_interval(500),
         );
-    provide_context(WebsocketContext::new(message, Arc::new(send.clone())));
+    Effect::watch(
+        move || message.get(),
+        move |message, _, _| {
+            if let Some(message) = message {
+                set_connection_info.update(|info| {
+                    info.last_message_time = Some(use_timestamp()());
+                    info.display_time.set("0s ago".to_string());
+                });
+                web_sys::console::log_1(
+                    &format!("Received websocket message: {:?}", message).into(),
+                );
+                if let Ok(ws_message) = serde_json::from_str::<WebSocketMessage>(&message) {
+                    if ws_message.message_type == "sql" {
+                        if let Some(query) = ws_message.query {
+                            // Send acknowledgment
+                            let ack = AckMessage {
+                                message_type: "ack".to_string(),
+                            };
+                            let ack_json = serde_json::to_string(&ack).unwrap();
+                            send(&ack_json);
+                            // Execute the received SQL query
+                            set_user_query.set(query.clone());
+                            execute_query(query);
+                        }
+                    }
+                }
+            }
+        },
+        true,
+    );
 
     Effect::watch(
         move || file_content(),
@@ -280,22 +325,58 @@ fn App() -> impl IntoView {
         true,
     );
 
+    // Set up the interval in the component
+    use_interval_fn(
+        move || {
+            set_connection_info.update(|info| {
+                if let Some(last_time) = info.last_message_time {
+                    let current = use_timestamp()();
+                    let seconds = ((current - last_time) / 1000.0).round() as i64;
+                    info.display_time.set(format!("{}s ago", seconds));
+                }
+            });
+        },
+        1000,
+    );
+
     view! {
         <div class="container mx-auto px-4 py-8 max-w-6xl">
             <h1 class="text-3xl font-bold mb-8 flex items-center justify-between">
                 <span>"Parquet Viewer"</span>
-                <a
-                    href="https://github.com/XiangpengHao/parquet-viewer"
-                    target="_blank"
-                    class="text-gray-600 hover:text-gray-800"
-                >
-                    <svg height="24" width="24" viewBox="0 0 16 16">
-                        <path
-                            fill="currentColor"
-                            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
-                        ></path>
-                    </svg>
-                </a>
+                <div class="flex items-center gap-4">
+                    <button
+                        on:click=move |_| set_show_settings.set(true)
+                        class="text-gray-600 hover:text-gray-800"
+                        title="Settings"
+                    >
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                            ></path>
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            ></path>
+                        </svg>
+                    </button>
+                    <a
+                        href="https://github.com/XiangpengHao/parquet-viewer"
+                        target="_blank"
+                        class="text-gray-600 hover:text-gray-800"
+                    >
+                        <svg height="24" width="24" viewBox="0 0 16 16">
+                            <path
+                                fill="currentColor"
+                                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+                            ></path>
+                        </svg>
+                    </a>
+                </div>
             </h1>
             <div class="space-y-6">
                 <FileReader
@@ -405,6 +486,7 @@ fn App() -> impl IntoView {
                 </div>
 
             </div>
+            <Settings show=show_settings set_show=set_show_settings connection_info=connection_info />
         </div>
     }
 }
