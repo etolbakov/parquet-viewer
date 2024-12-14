@@ -6,6 +6,7 @@ use leptos_use::{
     use_interval_fn, use_timestamp, use_websocket_with_options, ReconnectLimit,
     UseWebSocketOptions, UseWebSocketReturn,
 };
+use opendal::{services::Http, Operator};
 use query_results::QueryResults;
 use schema::SchemaSection;
 
@@ -20,7 +21,7 @@ use std::sync::Arc;
 
 use arrow::datatypes::SchemaRef;
 use bytes::Bytes;
-use leptos::prelude::*;
+use leptos::{logging, prelude::*};
 use parquet::{
     arrow::parquet_to_arrow_schema,
     errors::ParquetError,
@@ -186,14 +187,32 @@ impl WebsocketContext {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-struct WebSocketMessage {
-    message_type: String,
-    query: Option<String>,
+#[serde(rename_all = "snake_case")]
+enum WebSocketMessage {
+    Sql {
+        query: String,
+    },
+    ParquetFile {
+        file_name: String,
+        server_address: String,
+    },
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 struct AckMessage {
     message_type: String,
+}
+
+impl AckMessage {
+    fn new() -> Self {
+        Self {
+            message_type: "ack".to_string(),
+        }
+    }
+
+    fn new_json() -> String {
+        serde_json::to_string(&Self::new()).unwrap()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -243,9 +262,10 @@ fn App() -> impl IntoView {
             &ws_url,
             UseWebSocketOptions::default()
                 .reconnect_limit(ReconnectLimit::Infinite)
-                .reconnect_interval(500),
+                .reconnect_interval(1000),
         );
 
+    let send = Arc::new(send);
     Effect::watch(
         move || message.get(),
         move |message, _, _| {
@@ -254,20 +274,49 @@ fn App() -> impl IntoView {
                     info.last_message_time = Some(use_timestamp()());
                     info.display_time.set("0s ago".to_string());
                 });
-                web_sys::console::log_1(
-                    &format!("Received websocket message: {:?}", message).into(),
-                );
-                if let Ok(ws_message) = serde_json::from_str::<WebSocketMessage>(&message) {
-                    if ws_message.message_type == "sql" {
-                        if let Some(query) = ws_message.query {
-                            // Send acknowledgment
-                            let ack = AckMessage {
-                                message_type: "ack".to_string(),
-                            };
-                            let ack_json = serde_json::to_string(&ack).unwrap();
-                            send(&ack_json);
-                            set_user_input.set(query.clone());
-                        }
+
+                let message = serde_json::from_str::<WebSocketMessage>(&message).unwrap();
+                match message {
+                    WebSocketMessage::Sql { query } => {
+                        // Send acknowledgment
+                        let ack_json = AckMessage::new_json();
+                        send(&ack_json);
+                        set_user_input.set(query.clone());
+                    }
+                    WebSocketMessage::ParquetFile {
+                        file_name,
+                        server_address,
+                    } => {
+                        web_sys::console::log_1(
+                            &format!(
+                                "Received file: {}, server_address: {}",
+                                file_name, server_address
+                            )
+                            .into(),
+                        );
+                        let builder = Http::default().endpoint(&server_address);
+                        let Ok(op) = Operator::new(builder) else {
+                            set_error_message.set(Some("Failed to create HTTP operator".into()));
+                            return;
+                        };
+                        let op = op.finish();
+                        let send_inner = send.clone();
+                        leptos::task::spawn_local(async move {
+                            loop {
+                                match op.read(&file_name).await {
+                                    Ok(bs) => {
+                                        send_inner(&AckMessage::new_json());
+                                        set_file_bytes.set(Some(bs.to_bytes()));
+                                        set_file_name.set(file_name.clone());
+                                        logging::log!("read file success");
+                                        return;
+                                    }
+                                    Err(e) => {
+                                        logging::log!("read file failed: {}", e);
+                                    }
+                                }
+                            }
+                        });
                     }
                 }
             }
@@ -282,7 +331,7 @@ fn App() -> impl IntoView {
                 web_sys::console::log_1(&info.to_string().into());
                 let default_query =
                     format!("select * from \"{}\" limit 10", file_name.get_untracked());
-                set_user_input.set(default_query.clone());
+                set_user_input.set(default_query);
             }
             _ => {}
         },
@@ -328,7 +377,6 @@ fn App() -> impl IntoView {
             set_error_message.set(None);
 
             if query.trim().is_empty() {
-                set_error_message.set(Some("Please enter a SQL query.".into()));
                 return;
             }
 

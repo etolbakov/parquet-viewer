@@ -108,7 +108,7 @@ pub fn FileReader(
             .to_string();
         set_file_name.set(table_name);
 
-        wasm_bindgen_futures::spawn_local(async move {
+        leptos::task::spawn_local(async move {
             let builder = Http::default().endpoint(&endpoint);
             let Ok(op) = Operator::new(builder) else {
                 set_error_message.set(Some("Failed to create HTTP operator".into()));
