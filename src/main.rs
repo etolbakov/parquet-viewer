@@ -333,7 +333,7 @@ fn App() -> impl IntoView {
             if let Some(info) = info {
                 match user_input.get() {
                     Some(user_input) => {
-                        set_user_input.set(Some(user_input.clone()));
+                        set_user_input.set(Some(user_input));
                     }
                     None => {
                         logging::log!("{}", info.to_string());
@@ -348,16 +348,19 @@ fn App() -> impl IntoView {
     );
 
     Effect::watch(
-        user_input,
-        move |user_input, _, _| {
+        move || (user_input.get(), parquet_info.get()),
+        move |(user_input, parquet), _, _| {
             let Some(user_input_str) = user_input else {
                 return;
             };
+            if parquet.is_none() {
+                return;
+            }
             set_user_input.set(Some(user_input_str.clone()));
             let user_input = user_input_str.clone();
             let api_key = api_key.clone();
             leptos::task::spawn_local(async move {
-                let Some(parquet_info) = parquet_info() else {
+                let Some(parquet_info) = parquet_info.get() else {
                     return;
                 };
                 let sql = match query_input::user_input_to_sql(
