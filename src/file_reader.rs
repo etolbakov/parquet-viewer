@@ -1,6 +1,7 @@
 use bytes::Bytes;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::{prelude::Closure, JsCast};
+use leptos_router::hooks::query_signal;
 use opendal::{services::Http, services::S3, Operator};
 use web_sys::{js_sys, Url};
 
@@ -34,25 +35,101 @@ pub fn FileReader(
     set_file_bytes: WriteSignal<Option<Bytes>>,
     set_file_name: WriteSignal<String>,
 ) -> impl IntoView {
-    let default_url = "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet";
-    let (url, set_url) = signal(default_url.to_string());
-    let (active_tab, set_active_tab) = signal("file".to_string());
+    let (active_tab, set_active_tab) = query_signal::<String>("tab");
+
+    let (url_query, set_url_query) = query_signal::<String>("url");
+    let default_url = {
+        if let Some(url) = url_query.get() {
+            url
+        } else {
+            "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet".to_string()
+        }
+    };
+    let (url, set_url) = signal(default_url);
+
     let (s3_endpoint, _) = signal(get_stored_value(
         S3_ENDPOINT_KEY,
         "https://s3.amazonaws.com",
     ));
     let (s3_access_key_id, _) = signal(get_stored_value(S3_ACCESS_KEY_ID_KEY, ""));
     let (s3_secret_key, _) = signal(get_stored_value(S3_SECRET_KEY_KEY, ""));
-    let (s3_bucket, set_s3_bucket) = signal(get_stored_value(S3_BUCKET_KEY, ""));
-    let (s3_region, set_s3_region) = signal(get_stored_value(S3_REGION_KEY, "us-east-1"));
-    let (s3_file_path, set_s3_file_path) = signal(get_stored_value(S3_FILE_PATH_KEY, ""));
+
+    let (s3_bucket_query, set_s3_bucket_query) = query_signal::<String>("bucket");
+    let default_bucket = {
+        if let Some(bucket) = s3_bucket_query.get() {
+            bucket
+        } else {
+            get_stored_value(S3_BUCKET_KEY, "")
+        }
+    };
+    let (s3_bucket, set_s3_bucket) = signal(default_bucket);
+
+    let (s3_region_query, set_s3_region_query) = query_signal::<String>("region");
+    let default_region = {
+        if let Some(region) = s3_region_query.get() {
+            region
+        } else {
+            get_stored_value(S3_REGION_KEY, "us-east-1")
+        }
+    };
+    let (s3_region, set_s3_region) = signal(default_region);
+
+    let (s3_file_path_query, set_s3_file_path_query) = query_signal::<String>("file_path");
+    let default_file_path = {
+        if let Some(file_path) = s3_file_path_query.get() {
+            file_path
+        } else {
+            get_stored_value(S3_FILE_PATH_KEY, "")
+        }
+    };
+    let (s3_file_path, set_s3_file_path) = signal(default_file_path);
+
     let (is_folded, set_is_folded) = signal(false);
 
-    let set_active_tab = move |tab: &str| {
-        if active_tab.get() == tab {
-            set_is_folded.set(!is_folded.get());
+    Effect::watch(
+        url,
+        move |url, _, _| {
+            let Some(active_tab) = active_tab.get() else {
+                return;
+            };
+            if active_tab == "url" {
+                set_url_query.set(Some(url.clone()));
+            }
+        },
+        true,
+    );
+
+    let set_active_tab_fn = move |tab: &str| {
+        match tab {
+            "file" => {
+                set_url_query.set(None);
+                set_s3_bucket_query.set(None);
+                set_s3_region_query.set(None);
+                set_s3_file_path_query.set(None);
+            }
+            "url" => {
+                set_url_query.set(Some(url.get()));
+                set_s3_bucket_query.set(None);
+                set_s3_region_query.set(None);
+                set_s3_file_path_query.set(None);
+            }
+            "s3" => {
+                set_url_query.set(None);
+                set_s3_bucket_query.set(Some(s3_bucket.get()));
+                set_s3_region_query.set(Some(s3_region.get()));
+                set_s3_file_path_query.set(Some(s3_file_path.get()));
+            }
+            _ => {}
+        }
+        if let Some(active_t) = active_tab.get() {
+            if active_t == tab {
+                set_is_folded.set(!is_folded.get());
+            } else {
+                set_active_tab.set(Some(tab.to_string()));
+                set_is_folded.set(false);
+            }
         } else {
-            set_active_tab.set(tab.to_string());
+            set_active_tab.set(Some(tab.to_string()));
             set_is_folded.set(false);
         }
     };
@@ -85,8 +162,7 @@ pub fn FileReader(
         set_file_name.set(table_name);
     };
 
-    let on_url_submit = move |ev: web_sys::SubmitEvent| {
-        ev.prevent_default();
+    let on_url_submit = move || {
         let url_str = url.get();
         set_error_message.set(None);
 
@@ -128,8 +204,7 @@ pub fn FileReader(
         });
     };
 
-    let on_s3_submit = move |ev: web_sys::SubmitEvent| {
-        ev.prevent_default();
+    let on_s3_submit = move || {
         set_error_message.set(None);
 
         let endpoint = s3_endpoint.get();
@@ -181,6 +256,15 @@ pub fn FileReader(
         });
     };
 
+    match active_tab.get() {
+        Some(tab) => match tab.as_str() {
+            "url" => on_url_submit(),
+            "s3" => on_s3_submit(),
+            _ => {}
+        },
+        None => set_active_tab_fn("file"),
+    }
+
     let on_s3_bucket_change = move |ev| {
         let value = event_target_value(&ev);
         save_to_storage(S3_BUCKET_KEY, &value);
@@ -206,48 +290,51 @@ pub fn FileReader(
                     <button
                         class=move || {
                             let base = "py-2 px-1 border-b-2 font-medium text-sm";
-                            if active_tab.get() == "file" {
-                                format!("{} border-blue-500 text-blue-600", base)
-                            } else {
-                                format!(
-                                    "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
-                                    base,
-                                )
+                            if let Some(active_t) = active_tab.get() {
+                                if active_t == "file" {
+                                    return format!("{} border-blue-500 text-blue-600", base);
+                                }
                             }
+                            format!(
+                                "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
+                                base,
+                            )
                         }
-                        on:click=move |_| set_active_tab("file")
+                        on:click=move |_| set_active_tab_fn("file")
                     >
                         "From file"
                     </button>
                     <button
                         class=move || {
                             let base = "py-2 px-1 border-b-2 font-medium text-sm";
-                            if active_tab.get() == "url" {
-                                format!("{} border-blue-500 text-blue-600", base)
-                            } else {
-                                format!(
-                                    "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
-                                    base,
-                                )
+                            if let Some(active_t) = active_tab.get() {
+                                if active_t == "url" {
+                                    return format!("{} border-blue-500 text-blue-600", base);
+                                }
                             }
+                            format!(
+                                "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
+                                base,
+                            )
                         }
-                        on:click=move |_| set_active_tab("url")
+                        on:click=move |_| set_active_tab_fn("url")
                     >
                         "From URL"
                     </button>
                     <button
                         class=move || {
                             let base = "py-2 px-1 border-b-2 font-medium text-sm";
-                            if active_tab.get() == "s3" {
-                                format!("{} border-blue-500 text-blue-600", base)
-                            } else {
-                                format!(
-                                    "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
-                                    base,
-                                )
+                            if let Some(active_t) = active_tab.get() {
+                                if active_t == "s3" {
+                                    return format!("{} border-blue-500 text-blue-600", base);
+                                }
                             }
+                            format!(
+                                "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
+                                base,
+                            )
                         }
-                        on:click=move |_| set_active_tab("s3")
+                        on:click=move |_| set_active_tab_fn("s3")
                     >
                         "From S3"
                     </button>
@@ -260,8 +347,13 @@ pub fn FileReader(
                 } else {
                     "max-h-[500px] overflow-hidden transition-all duration-300 ease-in-out p-6"
                 };
-                match active_tab.get().as_str() {
+                let active_tab = active_tab.get();
+                let Some(active_tab) = active_tab else {
+                    return ().into_any();
+                };
+                match active_tab.as_str() {
                     "file" => {
+
                         view! {
                             <div class=move || transition_class.to_string()>
                                 <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center space-y-4">
@@ -290,7 +382,13 @@ pub fn FileReader(
                         view! {
                             <div class=move || transition_class.to_string()>
                                 <div class="h-full flex items-center">
-                                    <form on:submit=on_url_submit class="w-full">
+                                    <form
+                                        on:submit=move |ev| {
+                                            ev.prevent_default();
+                                            on_url_submit();
+                                        }
+                                        class="w-full"
+                                    >
                                         <div class="flex space-x-2">
                                             <input
                                                 type="url"
@@ -321,7 +419,13 @@ pub fn FileReader(
                     "s3" => {
                         view! {
                             <div class=move || transition_class.to_string()>
-                                <form on:submit=on_s3_submit class="space-y-4 w-full">
+                                <form
+                                    on:submit=move |ev| {
+                                        ev.prevent_default();
+                                        on_s3_submit();
+                                    }
+                                    class="space-y-4 w-full"
+                                >
                                     <div class="flex flex-wrap gap-4">
                                         <div class="flex-1 min-w-[250px]">
                                             <label class="block text-sm font-medium text-gray-700 mb-1">

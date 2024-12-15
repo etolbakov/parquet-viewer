@@ -11,8 +11,11 @@ use datafusion::{
     },
     prelude::SessionConfig,
 };
-use leptos::wasm_bindgen::{JsCast, JsValue};
 use leptos::{logging, prelude::*};
+use leptos::{
+    reactive::wrappers::write::SignalSetter,
+    wasm_bindgen::{JsCast, JsValue},
+};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use serde_json::json;
 use wasm_bindgen_futures::JsFuture;
@@ -81,8 +84,8 @@ pub(crate) async fn execute_query_inner(
 
 #[component]
 pub fn QueryInput(
-    user_input: ReadSignal<String>,
-    set_user_input: WriteSignal<String>,
+    user_input: Memo<Option<String>>,
+    set_user_input: SignalSetter<Option<String>>,
 ) -> impl IntoView {
     let (api_key, _) = signal({
         let window = web_sys::window().unwrap();
@@ -126,7 +129,7 @@ pub fn QueryInput(
             <div class="w-full flex gap-2 items-center">
                 <input
                     type="text"
-                    on:input=move |ev| set_input_value(event_target_value(&ev))
+                    on:input=move |ev| set_input_value(Some(event_target_value(&ev)))
                     prop:value=input_value
                     on:keydown=key_down
                     class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"

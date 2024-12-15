@@ -2,6 +2,7 @@ mod schema;
 use codee::string::FromToStringCodec;
 use datafusion::physical_plan::ExecutionPlan;
 use file_reader::{get_stored_value, FileReader};
+use leptos_router::{components::Router, hooks::query_signal};
 use leptos_use::{
     use_interval_fn, use_timestamp, use_websocket_with_options, ReconnectLimit,
     UseWebSocketOptions, UseWebSocketReturn,
@@ -244,7 +245,8 @@ impl Display for ConnectionInfo {
 fn App() -> impl IntoView {
     let (error_message, set_error_message) = signal(Option::<String>::None);
     let (file_bytes, set_file_bytes) = signal(None::<Bytes>);
-    let (user_input, set_user_input) = signal(String::new());
+    let (user_input, set_user_input) = query_signal::<String>("query");
+
     let (sql_query, set_sql_query) = signal(String::new());
     let (query_result, set_query_result) = signal(Vec::<arrow::array::RecordBatch>::new());
     let (file_name, set_file_name) = signal(String::from("uploaded"));
@@ -284,7 +286,7 @@ fn App() -> impl IntoView {
                         // Send acknowledgment
                         let ack_json = AckMessage::new_json();
                         send(&ack_json);
-                        set_user_input.set(query.clone());
+                        set_user_input.set(Some(query.clone()));
                     }
                     WebSocketMessage::ParquetFile {
                         file_name,
@@ -329,10 +331,17 @@ fn App() -> impl IntoView {
         parquet_info,
         move |info, _, _| {
             if let Some(info) = info {
-                logging::log!("{}", info.to_string());
-                let default_query =
-                    format!("select * from \"{}\" limit 10", file_name.get_untracked());
-                set_user_input.set(default_query);
+                match user_input.get() {
+                    Some(user_input) => {
+                        set_user_input.set(Some(user_input.clone()));
+                    }
+                    None => {
+                        logging::log!("{}", info.to_string());
+                        let default_query =
+                            format!("select * from \"{}\" limit 10", file_name.get_untracked());
+                        set_user_input.set(Some(default_query));
+                    }
+                }
             }
         },
         true,
@@ -341,7 +350,11 @@ fn App() -> impl IntoView {
     Effect::watch(
         user_input,
         move |user_input, _, _| {
-            let user_input = user_input.clone();
+            let Some(user_input_str) = user_input else {
+                return;
+            };
+            set_user_input.set(Some(user_input_str.clone()));
+            let user_input = user_input_str.clone();
             let api_key = api_key.clone();
             leptos::task::spawn_local(async move {
                 let Some(parquet_info) = parquet_info() else {
@@ -575,5 +588,11 @@ fn App() -> impl IntoView {
 
 fn main() {
     console_error_panic_hook::set_once();
-    mount_to_body(|| view! { <App /> })
+    mount_to_body(|| {
+        view! {
+            <Router>
+                <App />
+            </Router>
+        }
+    })
 }

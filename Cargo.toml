@@ -43,6 +43,7 @@ leptos-use = { version = "0.14.0", features = [
 	"use_websocket",
 ] }
 codee = { version = "0.2", features = ["msgpack_serde"] }
+leptos_router = { version = "0.7.0", features = ["nightly"] }
 
 [profile.release]
 strip = true
