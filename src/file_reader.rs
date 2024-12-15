@@ -393,10 +393,6 @@ pub fn FileReader(
                                             <input
                                                 type="url"
                                                 placeholder="Enter Parquet file URL"
-                                                on:focus=move |ev| {
-                                                    let input: web_sys::HtmlInputElement = event_target(&ev);
-                                                    input.select();
-                                                }
                                                 on:input=move |ev| {
                                                     set_url.set(event_target_value(&ev));
                                                 }
