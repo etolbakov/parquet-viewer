@@ -1,14 +1,12 @@
 mod schema;
-use codee::string::FromToStringCodec;
 use datafusion::physical_plan::ExecutionPlan;
 use file_reader::{get_stored_value, FileReader};
-use leptos_router::{components::Router, hooks::query_signal};
-use leptos_use::{
-    use_interval_fn, use_timestamp, use_websocket_with_options, ReconnectLimit,
-    UseWebSocketOptions, UseWebSocketReturn,
+use leptos_router::{
+    components::Router,
+    hooks::{query_signal, use_query_map},
 };
-use opendal::{services::Http, Operator};
-use query_results::QueryResults;
+
+use query_results::{export_to_csv_inner, export_to_parquet_inner, QueryResults};
 use schema::SchemaSection;
 
 mod file_reader;
@@ -33,9 +31,7 @@ mod query_input;
 use query_input::{execute_query_inner, QueryInput};
 
 mod settings;
-use settings::{Settings, ANTHROPIC_API_KEY, WS_ENDPOINT_KEY};
-
-use std::fmt::Display;
+use settings::{Settings, ANTHROPIC_API_KEY};
 
 #[derive(Debug, Clone, PartialEq)]
 struct ParquetInfo {
@@ -169,90 +165,19 @@ async fn execute_query_async(
     Ok((results, physical_plan))
 }
 
-#[derive(Clone)]
-pub struct WebsocketContext {
-    pub message: Signal<Option<String>>,
-    send: Arc<dyn Fn(&String) + Send + Sync>,
-}
-
-impl WebsocketContext {
-    pub fn new(message: Signal<Option<String>>, send: Arc<dyn Fn(&String) + Send + Sync>) -> Self {
-        Self { message, send }
-    }
-
-    pub fn send(&self, message: &str) {
-        (self.send)(&message.to_string())
-    }
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum WebSocketMessage {
-    Sql {
-        query: String,
-    },
-    ParquetFile {
-        file_name: String,
-        server_address: String,
-    },
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-struct AckMessage {
-    message_type: String,
-}
-
-impl AckMessage {
-    fn new() -> Self {
-        Self {
-            message_type: "ack".to_string(),
-        }
-    }
-
-    fn new_json() -> String {
-        serde_json::to_string(&Self::new()).unwrap()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ConnectionInfo {
-    pub last_message_time: Option<f64>,
-    pub display_time: RwSignal<String>,
-}
-
-impl ConnectionInfo {
-    pub fn new() -> Self {
-        Self {
-            last_message_time: None,
-            display_time: RwSignal::new("never".to_string()),
-        }
-    }
-}
-
-impl Default for ConnectionInfo {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Display for ConnectionInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.display_time.get())
-    }
-}
-
 #[component]
 fn App() -> impl IntoView {
     let (error_message, set_error_message) = signal(Option::<String>::None);
     let (file_bytes, set_file_bytes) = signal(None::<Bytes>);
     let (user_input, set_user_input) = query_signal::<String>("query");
 
+    let export_to = use_query_map().with(|map| map.get("export").map(|v| v.to_string()));
+
     let (sql_query, set_sql_query) = signal(String::new());
     let (query_result, set_query_result) = signal(Vec::<arrow::array::RecordBatch>::new());
     let (file_name, set_file_name) = signal(String::from("uploaded"));
     let (physical_plan, set_physical_plan) = signal(None::<Arc<dyn ExecutionPlan>>);
     let (show_settings, set_show_settings) = signal(false);
-    let (connection_info, set_connection_info) = signal(ConnectionInfo::new());
     let api_key = get_stored_value(ANTHROPIC_API_KEY, "");
 
     let parquet_info = Memo::new(move |_| {
@@ -260,72 +185,6 @@ fn App() -> impl IntoView {
             .get()
             .and_then(|bytes| get_parquet_info(bytes.clone()).ok())
     });
-
-    let ws_url = get_stored_value(WS_ENDPOINT_KEY, "ws://localhost:12306");
-    let UseWebSocketReturn { message, send, .. } =
-        use_websocket_with_options::<String, String, FromToStringCodec>(
-            &ws_url,
-            UseWebSocketOptions::default()
-                .reconnect_limit(ReconnectLimit::Infinite)
-                .reconnect_interval(1000),
-        );
-
-    let send = Arc::new(send);
-    Effect::watch(
-        message,
-        move |message, _, _| {
-            if let Some(message) = message {
-                set_connection_info.update(|info| {
-                    info.last_message_time = Some(use_timestamp()());
-                    info.display_time.set("0s ago".to_string());
-                });
-
-                let message = serde_json::from_str::<WebSocketMessage>(message).unwrap();
-                match message {
-                    WebSocketMessage::Sql { query } => {
-                        // Send acknowledgment
-                        let ack_json = AckMessage::new_json();
-                        send(&ack_json);
-                        set_user_input.set(Some(query.clone()));
-                    }
-                    WebSocketMessage::ParquetFile {
-                        file_name,
-                        server_address,
-                    } => {
-                        logging::log!(
-                            "Received file: {}, server_address: {}",
-                            file_name,
-                            server_address
-                        );
-                        let builder = Http::default().endpoint(&server_address);
-                        let Ok(op) = Operator::new(builder) else {
-                            set_error_message.set(Some("Failed to create HTTP operator".into()));
-                            return;
-                        };
-                        let op = op.finish();
-                        let send_inner = send.clone();
-                        leptos::task::spawn_local(async move {
-                            loop {
-                                match op.read(&file_name).await {
-                                    Ok(bs) => {
-                                        send_inner(&AckMessage::new_json());
-                                        set_file_bytes.set(Some(bs.to_bytes()));
-                                        set_file_name.set(file_name.clone());
-                                        logging::log!("read file success");
-                                        return;
-                                    }
-                                    Err(e) => {
-                                        logging::log!("read file failed: {}", e);
-                                    }
-                                }
-                            }
-                        });
-                    }
-                }
-            }
-        },
-        true,
-    );
 
     Effect::watch(
         parquet_info,
@@ -406,12 +265,20 @@ fn App() -> impl IntoView {
                 };
 
                 let query = query.clone();
+                let export_to = export_to.clone();
 
                 leptos::task::spawn_local(async move {
                     match execute_query_async(query.clone(), bytes, table_name, parquet_info).await
                     {
                         Ok((results, physical_plan)) => {
                             set_physical_plan.set(Some(physical_plan));
+                            if let Some(export_to) = export_to {
+                                if export_to == "csv" {
+                                    export_to_csv_inner(&results);
+                                } else if export_to == "parquet" {
+                                    export_to_parquet_inner(&results);
+                                }
+                            }
                             set_query_result.set(results);
                         }
                         Err(e) => set_error_message.set(Some(e)),
@@ -422,20 +289,6 @@ fn App() -> impl IntoView {
             }
         },
         true,
-    );
-
-    // Set up the interval in the component
-    use_interval_fn(
-        move || {
-            set_connection_info.update(|info| {
-                if let Some(last_time) = info.last_message_time {
-                    let current = use_timestamp()();
-                    let seconds = ((current - last_time) / 1000.0).round() as i64;
-                    info.display_time.set(format!("{}s ago", seconds));
-                }
-            });
-        },
-        1000,
     );
 
     view! {
@@ -583,7 +436,6 @@ fn App() -> impl IntoView {
             <Settings
                 show=show_settings
                 set_show=set_show_settings
-                connection_info=connection_info
             />
         </div>
     }

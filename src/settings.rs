@@ -1,9 +1,7 @@
-use crate::ConnectionInfo;
 use leptos::html::*;
 use leptos::prelude::*;
 use leptos::*;
 
-pub(crate) const WS_ENDPOINT_KEY: &str = "ws_endpoint";
 pub(crate) const ANTHROPIC_API_KEY: &str = "claude_api_key";
 pub(crate) const S3_ENDPOINT_KEY: &str = "s3_endpoint";
 pub(crate) const S3_ACCESS_KEY_ID_KEY: &str = "s3_access_key_id";
@@ -30,11 +28,8 @@ fn save_to_storage(key: &str, value: &str) {
 pub fn Settings(
     show: ReadSignal<bool>,
     set_show: WriteSignal<bool>,
-    connection_info: ReadSignal<ConnectionInfo>,
 ) -> impl IntoView {
-    let (ws_endpoint, set_ws_endpoint) =
-        signal(get_stored_value(WS_ENDPOINT_KEY, "ws://localhost:12306"));
-    let (anthropic_key, set_anthropic_key) = signal(get_stored_value(ANTHROPIC_API_KEY, ""));
+       let (anthropic_key, set_anthropic_key) = signal(get_stored_value(ANTHROPIC_API_KEY, ""));
     let (s3_endpoint, set_s3_endpoint) = signal(get_stored_value(
         S3_ENDPOINT_KEY,
         "https://s3.amazonaws.com",
@@ -98,28 +93,7 @@ pub fn Settings(
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md"
                             />
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                "WebSocket Endpoint"
-                            </label>
-                            <div class="flex items-center gap-2">
-                                <input
-                                    type="text"
-                                    on:input=move |ev| {
-                                        let value = event_target_value(&ev);
-                                        save_to_storage(WS_ENDPOINT_KEY, &value);
-                                        set_ws_endpoint.set(value);
-                                    }
-                                    prop:value=ws_endpoint
-                                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md"
-                                />
-                                <div class="flex items-center gap-2">
-                                    <span class="text-sm text-gray-600">
-                                        "last msg: "{move || connection_info.get().to_string()}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+                       
                     </div>
 
                     // S3 Configuration Section
