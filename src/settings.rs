@@ -25,11 +25,8 @@ fn save_to_storage(key: &str, value: &str) {
 }
 
 #[component]
-pub fn Settings(
-    show: ReadSignal<bool>,
-    set_show: WriteSignal<bool>,
-) -> impl IntoView {
-       let (anthropic_key, set_anthropic_key) = signal(get_stored_value(ANTHROPIC_API_KEY, ""));
+pub fn Settings(show: ReadSignal<bool>, set_show: WriteSignal<bool>) -> impl IntoView {
+    let (anthropic_key, set_anthropic_key) = signal(get_stored_value(ANTHROPIC_API_KEY, ""));
     let (s3_endpoint, set_s3_endpoint) = signal(get_stored_value(
         S3_ENDPOINT_KEY,
         "https://s3.amazonaws.com",
@@ -93,7 +90,6 @@ pub fn Settings(
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md"
                             />
                         </div>
-                       
                     </div>
 
                     // S3 Configuration Section

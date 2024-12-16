@@ -433,10 +433,7 @@ fn App() -> impl IntoView {
                 </div>
 
             </div>
-            <Settings
-                show=show_settings
-                set_show=set_show_settings
-            />
+            <Settings show=show_settings set_show=set_show_settings />
         </div>
     }
 }
