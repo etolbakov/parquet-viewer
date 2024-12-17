@@ -57,8 +57,12 @@ pub(crate) fn export_to_parquet_inner(query_result: &[RecordBatch]) {
     // Create an in-memory buffer to write the parquet data
     let mut buf = Vec::new();
 
-    // Create a parquet writer
-    let mut writer = ArrowWriter::try_new(&mut buf, query_result[0].schema(), None)
+    // Create a parquet writer with LZ4 compression
+    let props = parquet::file::properties::WriterProperties::builder()
+        .set_compression(parquet::basic::Compression::LZ4)
+        .build();
+
+    let mut writer = ArrowWriter::try_new(&mut buf, query_result[0].schema(), Some(props))
         .expect("Failed to create parquet writer");
 
     // Write the record batch
