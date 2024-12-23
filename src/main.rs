@@ -128,13 +128,11 @@ impl ParquetInfo {
 
         let has_column_index = metadata
             .column_index()
-            .map(|ci| ci.first().map(|c| c.len() > 0))
-            .flatten()
+            .and_then(|ci| ci.first().map(|c| !c.is_empty()))
             .unwrap_or(false);
         let has_page_index = metadata
             .offset_index()
-            .map(|ci| ci.first().map(|c| c.len() > 0))
-            .flatten()
+            .and_then(|ci| ci.first().map(|c| !c.is_empty()))
             .unwrap_or(false);
 
         Ok(Self {
