@@ -2,8 +2,12 @@ use bytes::Bytes;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::{prelude::Closure, JsCast};
 use leptos_router::hooks::query_signal;
+use object_store::path::Path;
+use object_store::{ObjectStore, PutPayload};
 use opendal::{services::Http, services::S3, Operator};
 use web_sys::{js_sys, Url};
+
+use crate::INMEMORY_STORE;
 
 const S3_ENDPOINT_KEY: &str = "s3_endpoint";
 const S3_ACCESS_KEY_ID_KEY: &str = "s3_access_key_id";
@@ -27,6 +31,20 @@ fn save_to_storage(key: &str, value: &str) {
             let _ = storage.set_item(key, value);
         }
     }
+}
+
+async fn update_file(
+    bytes: Bytes,
+    bytes_setter: WriteSignal<Option<Bytes>>,
+    file_name: &String,
+    file_name_setter: WriteSignal<String>,
+) {
+    let object_store = &*INMEMORY_STORE;
+    let path = Path::parse(format!("{}.parquet", file_name)).unwrap();
+    let payload = PutPayload::from_bytes(bytes.clone());
+    object_store.put(&path, payload).await.unwrap();
+    bytes_setter.set(Some(bytes));
+    file_name_setter.set(file_name.clone());
 }
 
 #[component]
@@ -142,24 +160,27 @@ pub fn FileReader(
         let file_reader = web_sys::FileReader::new().unwrap();
         let file_reader_clone = file_reader.clone();
 
-        let onload = Closure::wrap(Box::new(move |_: web_sys::Event| {
-            let result = file_reader_clone.result().unwrap();
-            let array_buffer = result.dyn_into::<js_sys::ArrayBuffer>().unwrap();
-            let uint8_array = js_sys::Uint8Array::new(&array_buffer);
-            let bytes = bytes::Bytes::from(uint8_array.to_vec());
-            set_file_bytes.set(Some(bytes.clone()));
-            set_is_folded.set(true);
-        }) as Box<dyn FnMut(_)>);
-
-        file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
-        file_reader.read_as_array_buffer(&file).unwrap();
-        onload.forget();
         let table_name = file
             .name()
             .strip_suffix(".parquet")
             .unwrap_or(&file.name())
             .to_string();
-        set_file_name.set(table_name);
+
+        let onload = Closure::wrap(Box::new(move |_: web_sys::Event| {
+            let table_name = table_name.clone();
+            let result = file_reader_clone.result().unwrap();
+            let array_buffer = result.dyn_into::<js_sys::ArrayBuffer>().unwrap();
+            let uint8_array = js_sys::Uint8Array::new(&array_buffer);
+            let bytes = bytes::Bytes::from(uint8_array.to_vec());
+            leptos::task::spawn_local(async move {
+                update_file(bytes.clone(), set_file_bytes, &table_name, set_file_name).await;
+                set_is_folded.set(true);
+            });
+        }) as Box<dyn FnMut(_)>);
+
+        file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+        file_reader.read_as_array_buffer(&file).unwrap();
+        onload.forget();
     };
 
     let on_url_submit = move || {
@@ -182,7 +203,6 @@ pub fn FileReader(
             .strip_suffix(".parquet")
             .unwrap_or("uploaded")
             .to_string();
-        set_file_name.set(table_name);
 
         leptos::task::spawn_local(async move {
             let builder = Http::default().endpoint(&endpoint);
@@ -194,7 +214,7 @@ pub fn FileReader(
 
             match op.read(&path).await {
                 Ok(bs) => {
-                    set_file_bytes.set(Some(bs.to_bytes()));
+                    update_file(bs.to_bytes(), set_file_bytes, &table_name, set_file_name).await;
                     set_is_folded.set(true);
                 }
                 Err(e) => {
@@ -226,9 +246,8 @@ pub fn FileReader(
             .strip_suffix(".parquet")
             .unwrap_or("uploaded")
             .to_string();
-        set_file_name.set(file_name);
 
-        wasm_bindgen_futures::spawn_local(async move {
+        leptos::task::spawn_local(async move {
             let cfg = S3::default()
                 .endpoint(&endpoint)
                 .access_key_id(&access_key_id)
@@ -241,7 +260,8 @@ pub fn FileReader(
                     let operator = op.finish();
                     match operator.read(&s3_file_path.get()).await {
                         Ok(bs) => {
-                            set_file_bytes.set(Some(bs.to_bytes()));
+                            update_file(bs.to_bytes(), set_file_bytes, &file_name, set_file_name)
+                                .await;
                             set_is_folded.set(true);
                         }
                         Err(e) => {

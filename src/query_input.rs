@@ -2,54 +2,25 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
-use bytes::Bytes;
 use datafusion::{
     error::DataFusionError,
-    execution::{SendableRecordBatchStream, TaskContext},
-    physical_plan::{
-        collect, stream::RecordBatchStreamAdapter, streaming::PartitionStream, ExecutionPlan,
-    },
-    prelude::SessionConfig,
+    execution::object_store::ObjectStoreUrl,
+    physical_plan::{collect, ExecutionPlan},
+    prelude::{ParquetReadOptions, SessionConfig},
 };
 use leptos::{logging, prelude::*};
 use leptos::{
     reactive::wrappers::write::SignalSetter,
     wasm_bindgen::{JsCast, JsValue},
 };
-use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use serde_json::json;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{js_sys, Headers, Request, RequestInit, RequestMode, Response};
 
-use crate::ParquetInfo;
-
-use futures::StreamExt;
-#[derive(Debug)]
-struct DummyStreamPartition {
-    schema: SchemaRef,
-    bytes: Bytes,
-}
-
-impl PartitionStream for DummyStreamPartition {
-    fn schema(&self) -> &SchemaRef {
-        &self.schema
-    }
-
-    fn execute(&self, _ctx: Arc<TaskContext>) -> SendableRecordBatchStream {
-        let parquet_builder = ParquetRecordBatchReaderBuilder::try_new(self.bytes.clone()).unwrap();
-        let reader = parquet_builder.build().unwrap();
-        Box::pin(RecordBatchStreamAdapter::new(
-            self.schema.clone(),
-            futures::stream::iter(reader)
-                .map(|batch| batch.map_err(|e| DataFusionError::ArrowError(e, None))),
-        ))
-    }
-}
+use crate::INMEMORY_STORE;
 
 pub(crate) async fn execute_query_inner(
     table_name: &str,
-    parquet_info: ParquetInfo,
-    data: Bytes,
     query: &str,
 ) -> Result<(Vec<RecordBatch>, Arc<dyn ExecutionPlan>), DataFusionError> {
     let mut config = SessionConfig::new();
@@ -57,17 +28,15 @@ pub(crate) async fn execute_query_inner(
 
     let ctx = datafusion::prelude::SessionContext::new_with_config(config);
 
-    let schema = parquet_info.schema.clone();
-
-    let streaming_table = datafusion::datasource::streaming::StreamingTable::try_new(
-        schema.clone(),
-        vec![Arc::new(DummyStreamPartition {
-            schema: schema.clone(),
-            bytes: data.clone(),
-        })],
-    )?;
-
-    ctx.register_table(table_name, Arc::new(streaming_table))?;
+    let object_store_url = ObjectStoreUrl::parse("mem://").unwrap();
+    let object_store = INMEMORY_STORE.clone();
+    ctx.register_object_store(object_store_url.as_ref(), object_store);
+    ctx.register_parquet(
+        table_name,
+        &format!("mem:///{}.parquet", table_name),
+        ParquetReadOptions::default(),
+    )
+    .await?;
 
     let plan = ctx.sql(query).await?;
 

@@ -44,6 +44,8 @@ leptos-use = { version = "0.14.0", features = [
 ] }
 codee = { version = "0.2", features = ["msgpack_serde"] }
 leptos_router = { version = "0.7.0", features = ["nightly"] }
+object_store = "0.11.1"
+async-trait = "0.1.83"
 
 [profile.release]
 strip = true

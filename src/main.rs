@@ -1,11 +1,13 @@
 mod schema;
 use datafusion::physical_plan::ExecutionPlan;
 use file_reader::{get_stored_value, FileReader};
+use futures::{future::BoxFuture, FutureExt};
 use leptos_router::{
     components::Router,
     hooks::{query_signal, use_query_map},
 };
 
+use object_store::memory::InMemory;
 use query_results::{export_to_csv_inner, export_to_parquet_inner, QueryResults};
 use schema::SchemaSection;
 
@@ -16,13 +18,13 @@ mod row_group_column;
 mod metadata;
 use metadata::MetadataSection;
 
-use std::sync::Arc;
+use std::{ops::Range, sync::Arc, sync::LazyLock};
 
 use arrow::datatypes::SchemaRef;
 use bytes::Bytes;
 use leptos::{logging, prelude::*};
 use parquet::{
-    arrow::parquet_to_arrow_schema,
+    arrow::{async_reader::AsyncFileReader, parquet_to_arrow_schema},
     errors::ParquetError,
     file::metadata::{ParquetMetaData, ParquetMetaDataReader},
 };
@@ -32,6 +34,60 @@ use query_input::{execute_query_inner, QueryInput};
 
 mod settings;
 use settings::{Settings, ANTHROPIC_API_KEY};
+
+pub(crate) static INMEMORY_STORE: LazyLock<Arc<InMemory>> =
+    LazyLock::new(|| Arc::new(InMemory::new()));
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ParquetReader {
+    bytes: Bytes,
+    parquet_info: ParquetInfo,
+}
+
+impl ParquetReader {
+    pub fn new(bytes: Bytes) -> Result<Self> {
+        let mut footer = [0_u8; 8];
+        footer.copy_from_slice(&bytes[bytes.len() - 8..]);
+        let metadata_len = ParquetMetaDataReader::decode_footer(&footer)?;
+
+        let mut metadata_reader = ParquetMetaDataReader::new()
+            .with_page_indexes(true)
+            .with_column_indexes(true)
+            .with_offset_indexes(true);
+        metadata_reader.try_parse(&bytes)?;
+        let metadata = metadata_reader.finish()?;
+
+        let parquet_info = ParquetInfo::from_metadata(metadata, metadata_len as u64)?;
+
+        Ok(Self {
+            bytes,
+            parquet_info,
+        })
+    }
+
+    fn info(&self) -> &ParquetInfo {
+        &self.parquet_info
+    }
+}
+
+impl AsyncFileReader for ParquetReader {
+    fn get_byte_ranges(
+        &mut self,
+        ranges: Vec<Range<usize>>,
+    ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>> {
+        let rt = ranges.iter().map(|r| self.bytes.slice(r.clone())).collect();
+        async move { Ok(rt) }.boxed()
+    }
+
+    fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
+        let sliced = self.bytes.slice(range);
+        async move { Ok(sliced) }.boxed()
+    }
+
+    fn get_metadata(&mut self) -> BoxFuture<'_, parquet::errors::Result<Arc<ParquetMetaData>>> {
+        async move { Ok(self.parquet_info.metadata.clone()) }.boxed()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 struct ParquetInfo {
@@ -70,8 +126,17 @@ impl ParquetInfo {
         let first_row_group = metadata.row_groups().first();
         let first_column = first_row_group.and_then(|rg| rg.columns().first());
 
-        let has_column_index = metadata.column_index().map(|ci| ci.first().map(|c| c.len()> 0)).flatten().unwrap_or(false);
-        let has_page_index = metadata.offset_index().map(|ci| ci.first().map(|c| c.len()> 0)).flatten().unwrap_or(false);
+        let has_column_index = metadata
+            .column_index()
+            .map(|ci| ci.first().map(|c| c.len() > 0))
+            .flatten()
+            .unwrap_or(false);
+        let has_page_index = metadata
+            .offset_index()
+            .map(|ci| ci.first().map(|c| c.len() > 0))
+            .flatten()
+            .unwrap_or(false);
+
         Ok(Self {
             file_size: compressed_size,
             uncompressed_size,
@@ -92,23 +157,6 @@ impl ParquetInfo {
             metadata_len,
         })
     }
-}
-
-fn get_parquet_info(bytes: Bytes) -> Result<ParquetInfo, ParquetError> {
-    let mut footer = [0_u8; 8];
-    footer.copy_from_slice(&bytes[bytes.len() - 8..]);
-    let metadata_len = ParquetMetaDataReader::decode_footer(&footer)?;
-
-    let mut metadata_reader = ParquetMetaDataReader::new()
-        .with_page_indexes(true)
-        .with_column_indexes(true)
-        .with_offset_indexes(true);
-    metadata_reader.try_parse(&bytes)?;
-    let metadata = metadata_reader.finish()?;
-
-    let parquet_info = ParquetInfo::from_metadata(metadata, metadata_len as u64)?;
-
-    Ok(parquet_info)
 }
 
 fn format_rows(rows: u64) -> String {
@@ -156,11 +204,9 @@ impl std::fmt::Display for ParquetInfo {
 
 async fn execute_query_async(
     query: String,
-    bytes: Bytes,
     table_name: String,
-    parquet_info: ParquetInfo,
 ) -> Result<(Vec<arrow::array::RecordBatch>, Arc<dyn ExecutionPlan>), String> {
-    let (results, physical_plan) = execute_query_inner(&table_name, parquet_info, bytes, &query)
+    let (results, physical_plan) = execute_query_inner(&table_name, &query)
         .await
         .map_err(|e| format!("Failed to execute query: {}", e))?;
 
@@ -182,14 +228,14 @@ fn App() -> impl IntoView {
     let (show_settings, set_show_settings) = signal(false);
     let api_key = get_stored_value(ANTHROPIC_API_KEY, "");
 
-    let parquet_info = Memo::new(move |_| {
+    let parquet_reader = Memo::new(move |_| {
         file_bytes
             .get()
-            .and_then(|bytes| get_parquet_info(bytes.clone()).ok())
+            .and_then(|bytes| ParquetReader::new(bytes.clone()).ok())
     });
 
     Effect::watch(
-        parquet_info,
+        parquet_reader,
         move |info, _, _| {
             if let Some(info) = info {
                 match user_input.get() {
@@ -197,7 +243,7 @@ fn App() -> impl IntoView {
                         set_user_input.set(Some(user_input));
                     }
                     None => {
-                        logging::log!("{}", info.to_string());
+                        logging::log!("{}", info.info().to_string());
                         let default_query =
                             format!("select * from \"{}\" limit 10", file_name.get_untracked());
                         set_user_input.set(Some(default_query));
@@ -209,7 +255,7 @@ fn App() -> impl IntoView {
     );
 
     Effect::watch(
-        move || (user_input.get(), parquet_info.get()),
+        move || (user_input.get(), parquet_reader.get()),
         move |(user_input, parquet), _, _| {
             let Some(user_input_str) = user_input else {
                 return;
@@ -221,12 +267,12 @@ fn App() -> impl IntoView {
             let user_input = user_input_str.clone();
             let api_key = api_key.clone();
             leptos::task::spawn_local(async move {
-                let Some(parquet_info) = parquet_info.get() else {
+                let Some(parquet_info) = parquet_reader.get() else {
                     return;
                 };
                 let sql = match query_input::user_input_to_sql(
                     &user_input,
-                    &parquet_info.schema,
+                    &parquet_info.info().schema,
                     &file_name(),
                     &api_key,
                 )
@@ -257,21 +303,12 @@ fn App() -> impl IntoView {
                 return;
             }
 
-            if let Some(bytes) = bytes_opt {
-                let parquet_info = match parquet_info() {
-                    Some(content) => content,
-                    None => {
-                        set_error_message.set(Some("Failed to get file schema".into()));
-                        return;
-                    }
-                };
-
+            if let Some(_bytes) = bytes_opt {
                 let query = query.clone();
                 let export_to = export_to.clone();
 
                 leptos::task::spawn_local(async move {
-                    match execute_query_async(query.clone(), bytes, table_name, parquet_info).await
-                    {
+                    match execute_query_async(query.clone(), table_name).await {
                         Ok((results, physical_plan)) => {
                             set_physical_plan.set(Some(physical_plan));
                             if let Some(export_to) = export_to {
@@ -368,9 +405,9 @@ fn App() -> impl IntoView {
                         file_bytes
                             .get()
                             .map(|_| {
-                                match parquet_info() {
+                                match parquet_reader() {
                                     Some(info) => {
-                                        if info.row_group_count > 0 {
+                                        if info.info().row_group_count > 0 {
                                             view! {
                                                 <QueryInput
                                                     user_input=user_input
@@ -407,16 +444,16 @@ fn App() -> impl IntoView {
 
                 <div class="mt-8">
                     {move || {
-                        let info = parquet_info();
+                        let info = parquet_reader();
                         match info {
                             Some(info) => {
                                 view! {
                                     <div class="space-y-6">
                                         <div class="w-full">
-                                            <MetadataSection parquet_info=info.clone() />
+                                            <MetadataSection parquet_info=info.info().clone() />
                                         </div>
                                         <div class="w-full">
-                                            <SchemaSection parquet_info=info.clone() />
+                                            <SchemaSection parquet_info=info.info().clone() />
                                         </div>
                                     </div>
                                 }
