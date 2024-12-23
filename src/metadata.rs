@@ -14,9 +14,6 @@ pub fn MetadataSection(parquet_info: super::ParquetInfo) -> impl IntoView {
     let has_column_index = parquet_info.has_column_index;
     let has_row_group_stats = parquet_info.has_row_group_stats;
 
-    // Create a signal for the selected row group
-    let (selected_row_group, set_selected_row_group) = signal(0);
-
     view! {
         <div class="bg-white rounded-lg border border-gray-300 p-6">
             <div class="grid grid-cols-2 gap-6">
@@ -111,11 +108,8 @@ pub fn MetadataSection(parquet_info: super::ParquetInfo) -> impl IntoView {
                         Some(
                             view! {
                                 <div>
-                                    <super::row_group::RowGroupSection
-                                        parquet_info=parquet_info.clone()
-                                        selected_row_group=selected_row_group
-                                        set_selected_row_group=set_selected_row_group
-                                    />
+                                    <super::row_group_column::RowGroupColumn parquet_info=parquet_info
+                                        .clone() />
                                 </div>
                             },
                         )

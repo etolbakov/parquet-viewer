@@ -101,11 +101,8 @@ fn stats_to_string(stats: Option<Statistics>) -> String {
 }
 
 #[component]
-pub fn RowGroupSection(
-    parquet_info: super::ParquetInfo,
-    selected_row_group: ReadSignal<usize>,
-    set_selected_row_group: WriteSignal<usize>,
-) -> impl IntoView {
+pub fn RowGroupColumn(parquet_info: super::ParquetInfo) -> impl IntoView {
+    let (selected_row_group, set_selected_row_group) = signal(0);
     let (selected_column, set_selected_column) = signal(0);
 
     let parquet_info_clone = parquet_info.clone();
@@ -132,6 +129,7 @@ pub fn RowGroupSection(
         let statistics = col.statistics().cloned();
         let has_bloom_filter = col.bloom_filter_offset().is_some();
         let encodings = col.encodings().clone();
+
         (
             compressed_size,
             uncompressed_size,

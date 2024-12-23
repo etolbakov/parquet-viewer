@@ -11,7 +11,7 @@ use schema::SchemaSection;
 
 mod file_reader;
 mod query_results;
-mod row_group;
+mod row_group_column;
 
 mod metadata;
 use metadata::MetadataSection;
@@ -70,6 +70,8 @@ impl ParquetInfo {
         let first_row_group = metadata.row_groups().first();
         let first_column = first_row_group.and_then(|rg| rg.columns().first());
 
+        let has_column_index = metadata.column_index().map(|ci| ci.first().map(|c| c.len()> 0)).flatten().unwrap_or(false);
+        let has_page_index = metadata.offset_index().map(|ci| ci.first().map(|c| c.len()> 0)).flatten().unwrap_or(false);
         Ok(Self {
             file_size: compressed_size,
             uncompressed_size,
@@ -80,8 +82,8 @@ impl ParquetInfo {
             has_row_group_stats: first_column
                 .map(|c| c.statistics().is_some())
                 .unwrap_or(false),
-            has_column_index: metadata.column_index().is_some(),
-            has_page_index: metadata.offset_index().is_some(),
+            has_column_index,
+            has_page_index,
             has_bloom_filter: first_column
                 .map(|c| c.bloom_filter_offset().is_some())
                 .unwrap_or(false),
