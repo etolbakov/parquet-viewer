@@ -115,8 +115,7 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
         let compressed_size = rg.compressed_size() as f64 / 1_048_576.0;
         let uncompressed_size = rg.total_byte_size() as f64 / 1_048_576.0;
         let num_rows = rg.num_rows() as u64;
-        let compression = rg.column(0).compression();
-        (compressed_size, uncompressed_size, num_rows, compression)
+        (compressed_size, uncompressed_size, num_rows)
     };
 
     let parquet_info_clone = parquet_reader.info().clone();
@@ -131,8 +130,6 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
         let uncompressed_size = col.uncompressed_size() as f64 / 1_048_576.0;
         let compression = col.compression();
         let statistics = col.statistics().cloned();
-        let has_bloom_filter = col.bloom_filter_offset().is_some();
-        let encodings = col.encodings().clone();
 
         let parquet_bytes = Arc::new(parquet_bytes.clone());
         let page_reader =
@@ -144,7 +141,7 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                 let page_type = page.page_type();
                 let page_size = page.buffer().len() as f64 / 1024.0;
                 let num_values = page.num_values();
-                page_info.push((page_type, page_size, num_values));
+                page_info.push((page_type, page_size, num_values, page.encoding()));
             }
         }
 
@@ -153,8 +150,6 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
             uncompressed_size,
             compression,
             statistics,
-            has_bloom_filter,
-            encodings,
             page_info,
         )
     };
@@ -188,11 +183,11 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                 </div>
 
                 {move || {
-                    let (compressed_size, uncompressed_size, num_rows, compression) = row_group_info();
+                    let (compressed_size, uncompressed_size, num_rows) = row_group_info();
                     view! {
                         <div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md">
                             <div class="space-y-1">
-                                <div class="text-sm text-gray-500">"Size"</div>
+                                <div class="text-sm text-gray-500">"Compressed"</div>
                                 <div class="font-medium">
                                     {format!("{:.2} MB", compressed_size)}
                                 </div>
@@ -204,7 +199,7 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                                 </div>
                             </div>
                             <div class="space-y-1">
-                                <div class="text-sm text-gray-500">"Compression"</div>
+                                <div class="text-sm text-gray-500">"Compression ratio"</div>
                                 <div class="font-medium">
                                     {format!("{:.1}%", compressed_size / uncompressed_size * 100.0)}
                                 </div>
@@ -212,10 +207,6 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                             <div class="space-y-1">
                                 <div class="text-sm text-gray-500">"Rows"</div>
                                 <div class="font-medium">{format_rows(num_rows)}</div>
-                            </div>
-                            <div class="col-span-2 space-y-1">
-                                <div class="text-sm text-gray-500">"Compression Type"</div>
-                                <div class="font-medium">{format!("{:?}", compression)}</div>
                             </div>
                         </div>
                     }
@@ -258,14 +249,12 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                         uncompressed_size,
                         compression,
                         statistics,
-                        has_bloom_filter,
-                        encodings,
                         page_info,
                     ) = column_info();
                     view! {
                         <div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md">
                             <div class="space-y-1">
-                                <div class="text-sm text-gray-500">"Size"</div>
+                                <div class="text-sm text-gray-500">"Compressed"</div>
                                 <div class="font-medium">
                                     {format!("{:.2} MB", compressed_size)}
                                 </div>
@@ -277,24 +266,14 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                                 </div>
                             </div>
                             <div class="space-y-1">
-                                <div class="text-sm text-gray-500">"Compression"</div>
+                                <div class="text-sm text-gray-500">"Compression ratio"</div>
                                 <div class="font-medium">
                                     {format!("{:.1}%", compressed_size / uncompressed_size * 100.0)}
                                 </div>
                             </div>
                             <div class="space-y-1">
-                                <div class="text-sm text-gray-500">"Bloom Filter"</div>
-                                <div class="font-medium">
-                                    {if has_bloom_filter { "✓" } else { "✗" }}
-                                </div>
-                            </div>
-                            <div class="col-span-2 space-y-1">
                                 <div class="text-sm text-gray-500">"Compression Type"</div>
                                 <div class="font-medium">{format!("{:?}", compression)}</div>
-                            </div>
-                            <div class="col-span-2 space-y-1">
-                                <div class="text-sm text-gray-500">"Encodings"</div>
-                                <div class="font-medium text-sm">{format!("{:?}", encodings)}</div>
                             </div>
                             <div class="col-span-2 space-y-1">
                                 <div class="text-sm text-gray-500">"Statistics"</div>
@@ -303,25 +282,29 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                             <div class="col-span-2 space-y-1">
                                 <div class="space-y-0.5">
                                     <div class="flex gap-4 text-sm text-gray-500">
-                                        <span class="w-16">Page #</span>
-                                        <span class="w-32">Type</span>
-                                        <span class="w-24">Size</span>
-                                        <span>Rows</span>
+                                        <span class="w-4">"#"</span>
+                                        <span class="w-32">"Type"</span>
+                                        <span class="w-16">"Size"</span>
+                                        <span class="w-16">"Rows"</span>
+                                        <span>"Encoding"</span>
                                     </div>
                                     <div class="max-h-[250px] overflow-y-auto pr-2">
                                         {page_info
                                             .into_iter()
                                             .enumerate()
-                                            .map(|(i, (page_type, size, values))| {
+                                            .map(|(i, (page_type, size, values, encoding))| {
                                                 view! {
                                                     <div class="flex gap-4 text-sm">
-                                                        <span class="w-16">{format!("{}.", i)}</span>
+                                                        <span class="w-4">{format!("{}", i)}</span>
                                                         <span class="w-32">{format!("{:?}", page_type)}</span>
-                                                        <span class="w-24 text-gray-600">
-                                                            {format!("{:.1} KB", size)}
+                                                        <span class="w-16">
+                                                            {format!("{} KB", size.round() as i64)}
                                                         </span>
-                                                        <span class="text-gray-600">
+                                                        <span class="w-16">
                                                             {format_rows(values as u64)}
+                                                        </span>
+                                                        <span>
+                                                            {format!("{:?}", encoding)}
                                                         </span>
                                                     </div>
                                                 }
