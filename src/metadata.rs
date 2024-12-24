@@ -1,7 +1,8 @@
 use leptos::prelude::*;
 
 #[component]
-pub fn MetadataSection(parquet_info: super::ParquetInfo) -> impl IntoView {
+pub fn MetadataSection(parquet_reader: super::ParquetReader) -> impl IntoView {
+    let parquet_info = parquet_reader.info().clone();
     let created_by = parquet_info
         .metadata
         .file_metadata()
@@ -108,8 +109,8 @@ pub fn MetadataSection(parquet_info: super::ParquetInfo) -> impl IntoView {
                         Some(
                             view! {
                                 <div>
-                                    <super::row_group_column::RowGroupColumn parquet_info=parquet_info
-                                        .clone() />
+                                    <super::row_group_column::RowGroupColumn parquet_reader=parquet_reader.clone()
+                                         />
                                 </div>
                             },
                         )

@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use leptos::prelude::*;
-use parquet::file::statistics::Statistics;
+use parquet::file::{reader::SerializedPageReader, statistics::Statistics};
 
 use crate::format_rows;
 
@@ -101,11 +103,11 @@ fn stats_to_string(stats: Option<Statistics>) -> String {
 }
 
 #[component]
-pub fn RowGroupColumn(parquet_info: super::ParquetInfo) -> impl IntoView {
+pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
     let (selected_row_group, set_selected_row_group) = signal(0);
     let (selected_column, set_selected_column) = signal(0);
 
-    let parquet_info_clone = parquet_info.clone();
+    let parquet_info_clone = parquet_reader.info().clone();
     let row_group_info = move || {
         let rg = parquet_info_clone
             .metadata
@@ -117,18 +119,34 @@ pub fn RowGroupColumn(parquet_info: super::ParquetInfo) -> impl IntoView {
         (compressed_size, uncompressed_size, num_rows, compression)
     };
 
-    let parquet_info_clone = parquet_info.clone();
+    let parquet_info_clone = parquet_reader.info().clone();
+    let parquet_bytes = parquet_reader.bytes().clone();
     let column_info = move || {
         let rg = parquet_info_clone
             .metadata
             .row_group(selected_row_group.get());
         let col = rg.column(selected_column.get());
+        let row_count = rg.num_rows();
         let compressed_size = col.compressed_size() as f64 / 1_048_576.0;
         let uncompressed_size = col.uncompressed_size() as f64 / 1_048_576.0;
         let compression = col.compression();
         let statistics = col.statistics().cloned();
         let has_bloom_filter = col.bloom_filter_offset().is_some();
         let encodings = col.encodings().clone();
+
+        let parquet_bytes = Arc::new(parquet_bytes.clone());
+        let page_reader =
+            SerializedPageReader::new(parquet_bytes, col, row_count as usize, None).unwrap();
+
+        let mut page_info = Vec::new();
+        for page in page_reader {
+            if let Ok(page) = page {
+                let page_type = page.page_type();
+                let page_size = page.buffer().len() as f64 / 1024.0;
+                let num_values = page.num_values();
+                page_info.push((page_type, page_size, num_values));
+            }
+        }
 
         (
             compressed_size,
@@ -137,6 +155,7 @@ pub fn RowGroupColumn(parquet_info: super::ParquetInfo) -> impl IntoView {
             statistics,
             has_bloom_filter,
             encodings,
+            page_info,
         )
     };
 
@@ -156,7 +175,7 @@ pub fn RowGroupColumn(parquet_info: super::ParquetInfo) -> impl IntoView {
                                 .set(event_target_value(&ev).parse::<usize>().unwrap_or(0))
                         }
                     >
-                        {(0..parquet_info.row_group_count)
+                        {(0..parquet_reader.info().row_group_count)
                             .map(|i| {
                                 view! {
                                     <option value=i.to_string() class="py-2">
@@ -217,7 +236,7 @@ pub fn RowGroupColumn(parquet_info: super::ParquetInfo) -> impl IntoView {
                                 .set(event_target_value(&ev).parse::<usize>().unwrap_or(0))
                         }
                     >
-                        {parquet_info
+                        {parquet_reader.info()
                             .schema
                             .fields
                             .iter()
@@ -241,6 +260,7 @@ pub fn RowGroupColumn(parquet_info: super::ParquetInfo) -> impl IntoView {
                         statistics,
                         has_bloom_filter,
                         encodings,
+                        page_info,
                     ) = column_info();
                     view! {
                         <div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md">
@@ -279,6 +299,36 @@ pub fn RowGroupColumn(parquet_info: super::ParquetInfo) -> impl IntoView {
                             <div class="col-span-2 space-y-1">
                                 <div class="text-sm text-gray-500">"Statistics"</div>
                                 <div class="font-medium text-sm">{stats_to_string(statistics)}</div>
+                            </div>
+                            <div class="col-span-2 space-y-1">
+                                <div class="space-y-0.5">
+                                    <div class="flex gap-4 text-sm text-gray-500">
+                                        <span class="w-16">Page #</span>
+                                        <span class="w-32">Type</span>
+                                        <span class="w-24">Size</span>
+                                        <span>Rows</span>
+                                    </div>
+                                    <div class="max-h-[250px] overflow-y-auto pr-2">
+                                        {page_info
+                                            .into_iter()
+                                            .enumerate()
+                                            .map(|(i, (page_type, size, values))| {
+                                                view! {
+                                                    <div class="flex gap-4 text-sm">
+                                                        <span class="w-16">{format!("{}.", i)}</span>
+                                                        <span class="w-32">{format!("{:?}", page_type)}</span>
+                                                        <span class="w-24 text-gray-600">
+                                                            {format!("{:.1} KB", size)}
+                                                        </span>
+                                                        <span class="text-gray-600">
+                                                            {format_rows(values as u64)}
+                                                        </span>
+                                                    </div>
+                                                }
+                                            })
+                                            .collect::<Vec<_>>()}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     }

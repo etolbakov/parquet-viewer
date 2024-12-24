@@ -68,6 +68,10 @@ impl ParquetReader {
     fn info(&self) -> &ParquetInfo {
         &self.parquet_info
     }
+
+    fn bytes(&self) -> &Bytes {
+        &self.bytes
+    }
 }
 
 impl AsyncFileReader for ParquetReader {
@@ -448,7 +452,7 @@ fn App() -> impl IntoView {
                                 view! {
                                     <div class="space-y-6">
                                         <div class="w-full">
-                                            <MetadataSection parquet_info=info.info().clone() />
+                                            <MetadataSection parquet_reader=info.clone() />
                                         </div>
                                         <div class="w-full">
                                             <SchemaSection parquet_info=info.info().clone() />
