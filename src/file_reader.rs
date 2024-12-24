@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::{prelude::Closure, JsCast};
 use leptos_router::hooks::query_signal;
@@ -7,7 +6,7 @@ use object_store::{ObjectStore, PutPayload};
 use opendal::{services::Http, services::S3, Operator};
 use web_sys::{js_sys, Url};
 
-use crate::INMEMORY_STORE;
+use crate::{ParquetTable, INMEMORY_STORE};
 
 const S3_ENDPOINT_KEY: &str = "s3_endpoint";
 const S3_ACCESS_KEY_ID_KEY: &str = "s3_access_key_id";
@@ -34,24 +33,20 @@ fn save_to_storage(key: &str, value: &str) {
 }
 
 async fn update_file(
-    bytes: Bytes,
-    bytes_setter: WriteSignal<Option<Bytes>>,
-    file_name: &String,
-    file_name_setter: WriteSignal<String>,
+    parquet_table: ParquetTable,
+    parquet_table_setter: WriteSignal<Option<ParquetTable>>,
 ) {
     let object_store = &*INMEMORY_STORE;
-    let path = Path::parse(format!("{}.parquet", file_name)).unwrap();
-    let payload = PutPayload::from_bytes(bytes.clone());
+    let path = Path::parse(format!("{}.parquet", parquet_table.table_name)).unwrap();
+    let payload = PutPayload::from_bytes(parquet_table.bytes.clone());
     object_store.put(&path, payload).await.unwrap();
-    bytes_setter.set(Some(bytes));
-    file_name_setter.set(file_name.clone());
+    parquet_table_setter.set(Some(parquet_table));
 }
 
 #[component]
 pub fn FileReader(
     set_error_message: WriteSignal<Option<String>>,
-    set_file_bytes: WriteSignal<Option<Bytes>>,
-    set_file_name: WriteSignal<String>,
+    set_parquet_table: WriteSignal<Option<ParquetTable>>,
 ) -> impl IntoView {
     let (active_tab, set_active_tab) = query_signal::<String>("tab");
 
@@ -172,8 +167,9 @@ pub fn FileReader(
             let array_buffer = result.dyn_into::<js_sys::ArrayBuffer>().unwrap();
             let uint8_array = js_sys::Uint8Array::new(&array_buffer);
             let bytes = bytes::Bytes::from(uint8_array.to_vec());
+            let parquet_table = ParquetTable { bytes, table_name };
             leptos::task::spawn_local(async move {
-                update_file(bytes.clone(), set_file_bytes, &table_name, set_file_name).await;
+                update_file(parquet_table, set_parquet_table).await;
                 set_is_folded.set(true);
             });
         }) as Box<dyn FnMut(_)>);
@@ -214,7 +210,11 @@ pub fn FileReader(
 
             match op.read(&path).await {
                 Ok(bs) => {
-                    update_file(bs.to_bytes(), set_file_bytes, &table_name, set_file_name).await;
+                    let parquet_table = ParquetTable {
+                        bytes: bs.to_bytes(),
+                        table_name,
+                    };
+                    update_file(parquet_table, set_parquet_table).await;
                     set_is_folded.set(true);
                 }
                 Err(e) => {
@@ -260,8 +260,11 @@ pub fn FileReader(
                     let operator = op.finish();
                     match operator.read(&s3_file_path.get()).await {
                         Ok(bs) => {
-                            update_file(bs.to_bytes(), set_file_bytes, &file_name, set_file_name)
-                                .await;
+                            let parquet_table = ParquetTable {
+                                bytes: bs.to_bytes(),
+                                table_name: file_name,
+                            };
+                            update_file(parquet_table, set_parquet_table).await;
                             set_is_folded.set(true);
                         }
                         Err(e) => {

@@ -17,6 +17,8 @@ use web_sys::wasm_bindgen::JsCast;
 
 pub(crate) fn export_to_csv_inner(query_result: &[RecordBatch]) {
     let mut csv_data = String::new();
+    
+    // Headers remain the same as they're based on schema
     let headers: Vec<String> = query_result[0]
         .schema()
         .fields()
@@ -25,20 +27,26 @@ pub(crate) fn export_to_csv_inner(query_result: &[RecordBatch]) {
         .collect();
     csv_data.push_str(&headers.join(","));
     csv_data.push('\n');
-    for row_idx in 0..query_result[0].num_rows() {
-        let row: Vec<String> = (0..query_result[0].num_columns())
-            .map(|col_idx| {
-                let column = query_result[0].column(col_idx);
-                if column.is_null(row_idx) {
-                    "NULL".to_string()
-                } else {
-                    column.as_ref().value_to_string(row_idx)
-                }
-            })
-            .collect();
-        csv_data.push_str(&row.join(","));
-        csv_data.push('\n');
+
+    // Process all record batches
+    for batch in query_result {
+        for row_idx in 0..batch.num_rows() {
+            let row: Vec<String> = (0..batch.num_columns())
+                .map(|col_idx| {
+                    let column = batch.column(col_idx);
+                    if column.is_null(row_idx) {
+                        "NULL".to_string()
+                    } else {
+                        column.as_ref().value_to_string(row_idx)
+                    }
+                })
+                .collect();
+            csv_data.push_str(&row.join(","));
+            csv_data.push('\n');
+        }
     }
+
+    // Rest of the function remains the same
     let blob = web_sys::Blob::new_with_str_sequence(&js_sys::Array::of1(&csv_data.into())).unwrap();
     let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
     let a = web_sys::window()
@@ -54,10 +62,8 @@ pub(crate) fn export_to_csv_inner(query_result: &[RecordBatch]) {
 }
 
 pub(crate) fn export_to_parquet_inner(query_result: &[RecordBatch]) {
-    // Create an in-memory buffer to write the parquet data
     let mut buf = Vec::new();
 
-    // Create a parquet writer with LZ4 compression
     let props = parquet::file::properties::WriterProperties::builder()
         .set_compression(parquet::basic::Compression::LZ4)
         .build();
@@ -65,15 +71,15 @@ pub(crate) fn export_to_parquet_inner(query_result: &[RecordBatch]) {
     let mut writer = ArrowWriter::try_new(&mut buf, query_result[0].schema(), Some(props))
         .expect("Failed to create parquet writer");
 
-    // Write the record batch
-    writer
-        .write(&query_result[0])
-        .expect("Failed to write record batch");
+    // Write all record batches
+    for batch in query_result {
+        writer
+            .write(batch)
+            .expect("Failed to write record batch");
+    }
 
-    // Close the writer to flush the data
     writer.close().expect("Failed to close writer");
 
-    // Create a blob from the buffer
     let array = js_sys::Uint8Array::from(&buf[..]);
     let blob = web_sys::Blob::new_with_u8_array_sequence(&js_sys::Array::of1(&array))
         .expect("Failed to create blob");

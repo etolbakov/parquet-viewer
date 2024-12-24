@@ -136,13 +136,11 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
             SerializedPageReader::new(parquet_bytes, col, row_count as usize, None).unwrap();
 
         let mut page_info = Vec::new();
-        for page in page_reader {
-            if let Ok(page) = page {
-                let page_type = page.page_type();
-                let page_size = page.buffer().len() as f64 / 1024.0;
-                let num_values = page.num_values();
-                page_info.push((page_type, page_size, num_values, page.encoding()));
-            }
+        for page in page_reader.flatten() {
+            let page_type = page.page_type();
+            let page_size = page.buffer().len() as f64 / 1024.0;
+            let num_values = page.num_values();
+            page_info.push((page_type, page_size, num_values, page.encoding()));
         }
 
         (
@@ -227,7 +225,8 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                                 .set(event_target_value(&ev).parse::<usize>().unwrap_or(0))
                         }
                     >
-                        {parquet_reader.info()
+                        {parquet_reader
+                            .info()
                             .schema
                             .fields
                             .iter()
@@ -244,13 +243,7 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                 </div>
 
                 {move || {
-                    let (
-                        compressed_size,
-                        uncompressed_size,
-                        compression,
-                        statistics,
-                        page_info,
-                    ) = column_info();
+                    let (compressed_size, uncompressed_size, compression, statistics, page_info) = column_info();
                     view! {
                         <div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md">
                             <div class="space-y-1">
@@ -300,12 +293,8 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                                                         <span class="w-16">
                                                             {format!("{} KB", size.round() as i64)}
                                                         </span>
-                                                        <span class="w-16">
-                                                            {format_rows(values as u64)}
-                                                        </span>
-                                                        <span>
-                                                            {format!("{:?}", encoding)}
-                                                        </span>
+                                                        <span class="w-16">{format_rows(values as u64)}</span>
+                                                        <span>{format!("{:?}", encoding)}</span>
                                                     </div>
                                                 }
                                             })

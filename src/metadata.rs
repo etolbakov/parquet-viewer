@@ -109,8 +109,8 @@ pub fn MetadataSection(parquet_reader: super::ParquetReader) -> impl IntoView {
                         Some(
                             view! {
                                 <div>
-                                    <super::row_group_column::RowGroupColumn parquet_reader=parquet_reader.clone()
-                                         />
+                                    <super::row_group_column::RowGroupColumn parquet_reader=parquet_reader
+                                        .clone() />
                                 </div>
                             },
                         )
