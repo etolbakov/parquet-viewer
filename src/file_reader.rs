@@ -37,7 +37,7 @@ async fn update_file(
     parquet_table_setter: WriteSignal<Option<ParquetTable>>,
 ) {
     let object_store = &*INMEMORY_STORE;
-    let path = Path::parse(format!("{}", parquet_table.table_name)).unwrap();
+    let path = Path::parse(&parquet_table.table_name).unwrap();
     let payload = PutPayload::from_bytes(parquet_table.bytes.clone());
     object_store.put(&path, payload).await.unwrap();
     parquet_table_setter.set(Some(parquet_table));

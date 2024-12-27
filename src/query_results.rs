@@ -261,7 +261,9 @@ pub fn QueryResultView(result: QueryResult) -> impl IntoView {
                 </div>
 
                 <div class="font-mono text-sm overflow-x-auto relative group flex-grow mb-4">
-                    <pre><code class="language-sql">{sql_clone}</code></pre>
+                    <pre>
+                        <code class="language-sql">{sql_clone}</code>
+                    </pre>
                 </div>
             </div>
 
