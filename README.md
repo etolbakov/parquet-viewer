@@ -12,7 +12,7 @@ Online at: https://parquet-viewer.xiangpeng.systems
 
 ### Demo
 
-![screenshot](doc/parquet-viewer.jpg)
+![screenshot](doc/parquet-viewer.gif)
 
 ### Headless mode
 Despite being a battery-included web app, it can also be used as a headless tool, especially helpful when working with LLM tools.
