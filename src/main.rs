@@ -380,7 +380,6 @@ fn App() -> impl IntoView {
                     set_parquet_table=set_parquet_table
                 />
 
-
                 {move || {
                     error_message
                         .get()
