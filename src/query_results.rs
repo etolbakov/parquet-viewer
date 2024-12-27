@@ -107,37 +107,73 @@ pub fn QueryResults(
     physical_plan: Arc<dyn ExecutionPlan>,
 ) -> impl IntoView {
     let (active_tab, set_active_tab) = signal("results".to_string());
+    let query_result = Arc::new(query_result);
+
+    let query_result_clone1 = query_result.clone();
+    let query_result_clone2 = query_result.clone();
 
     let sql = sql_query.clone();
 
     view! {
         <div class="mt-4 p-4 bg-white border border-gray-300 rounded-md">
-            <div class="mb-4 p-3 bg-gray-50 rounded border border-gray-200 font-mono text-sm overflow-x-auto relative group">
-                {sql.clone()}
-                <button
-                    class="absolute top-2 right-2 p-2 text-gray-500 hover:text-gray-700"
-                    on:click=move |_| {
-                        let window = web_sys::window().unwrap();
-                        let navigator = window.navigator();
-                        let clipboard = navigator.clipboard();
-                        let _ = clipboard.write_text(&sql);
-                    }
-                >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
+            <div class="flex justify-between items-center mb-4">
+                <div class="p-3 bg-gray-50 rounded border border-gray-200 font-mono text-sm overflow-x-auto relative group flex-grow">
+                    {sql.clone()}
+                </div>
+                <div class="flex items-center gap-2 ml-4">
+                    <button
+                        class="p-2 text-gray-500 hover:text-gray-700 relative group"
+                        aria-label="Export to CSV"
+                        on:click=move |_| {
+                            export_to_csv_inner(&query_result_clone2);
+                        }
                     >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
-                        />
-                    </svg>
-                </button>
+                        <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+                            "Export to CSV"
+                        </span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                    </button>
+                    <button
+                        class="p-2 text-gray-500 hover:text-gray-700 relative group"
+                        aria-label="Export to Parquet"
+                        on:click=move |_| {
+                            export_to_parquet_inner(&query_result_clone1);
+                        }
+                    >
+                        <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+                            "Export to Parquet"
+                        </span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                    </button>
+                    <button
+                        class="p-2 text-gray-500 hover:text-gray-700 relative group animate-on-click"
+                        aria-label="Copy SQL"
+                        on:click=move |_| {
+                            let window = web_sys::window().unwrap();
+                            let navigator = window.navigator();
+                            let clipboard = navigator.clipboard();
+                            let _ = clipboard.write_text(&sql);
+                        }
+                    >
+                        <style>
+                            {".animate-on-click:active { animation: quick-bounce 0.2s; }
+                              @keyframes quick-bounce {
+                                0%, 100% { transform: scale(1); }
+                                50% { transform: scale(0.95); }
+                              }"}
+                        </style>
+                        <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+                            "Copy SQL"
+                        </span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                        </svg>
+                    </button>
+                </div>
             </div>
             <div class="mb-4 border-b border-gray-300 flex items-center">
                 <button
@@ -177,30 +213,8 @@ pub fn QueryResults(
 
             {move || match active_tab().as_str() {
                 "results" => {
-                    let query_result_csv = query_result.clone();
-                    let export_to_csv = move |_| {
-                        export_to_csv_inner(&query_result_csv);
-                    };
-                    let query_result_parquet = query_result.clone();
-                    let export_to_parquet = move |_| {
-                        export_to_parquet_inner(&query_result_parquet);
-                    };
-
                     view! {
                         <div class="max-h-[32rem] overflow-auto relative">
-
-                            <button
-                                class="mb-4 mx-2 px-2 py-1 border border-gray-500 text-gray-500 text-sm rounded hover:bg-gray-100"
-                                on:click=export_to_csv
-                            >
-                                "Export to CSV"
-                            </button>
-                            <button
-                                class="mb-4 mx-2 px-2 py-1 border border-gray-500 text-gray-500 text-sm rounded hover:bg-gray-100"
-                                on:click=export_to_parquet
-                            >
-                                "Export to Parquet"
-                            </button>
                             <table class="min-w-full bg-white border border-gray-300 table-fixed">
                                 <thead class="sticky top-0 z-10">
                                     <tr class="bg-gray-100">
@@ -243,7 +257,6 @@ pub fn QueryResults(
                                                             view! {
                                                                 <td class="px-4 py-1 border-b w-48 min-w-48 leading-tight text-gray-700">
                                                                     <div
-                                                                        class="overflow-x-auto whitespace-nowrap"
                                                                         title=cell_value.clone()
                                                                     >
                                                                         {cell_value.clone()}

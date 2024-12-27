@@ -103,12 +103,22 @@ pub fn QueryInput(
                     on:keydown=key_down
                     class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <button
-                    on:click=button_press
-                    class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 whitespace-nowrap"
-                >
-                    "Run Query"
-                </button>
+                <div class="flex items-center gap-1">
+                    <button
+                        on:click=button_press
+                        class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 whitespace-nowrap"
+                    >
+                        "Run Query"
+                    </button>
+                    <div class="relative group">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500 hover:text-gray-700 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="absolute bottom-full right-0 mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            "Query starts with 'SELECT' run as SQL, otherwise it is a question to be answered by AI generated SQL" 
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     }
