@@ -1,6 +1,11 @@
 mod schema;
-use datafusion::physical_plan::ExecutionPlan;
-use file_reader::{get_stored_value, FileReader};
+use datafusion::{
+    datasource::MemTable,
+    execution::object_store::ObjectStoreUrl,
+    physical_plan::ExecutionPlan,
+    prelude::{SessionConfig, SessionContext},
+};
+use file_reader::FileReader;
 use leptos_router::{
     components::Router,
     hooks::{query_signal, use_query_map},
@@ -32,10 +37,20 @@ mod query_input;
 use query_input::{execute_query_inner, QueryInput};
 
 mod settings;
-use settings::{Settings, ANTHROPIC_API_KEY};
+use settings::Settings;
 
 pub(crate) static INMEMORY_STORE: LazyLock<Arc<InMemory>> =
     LazyLock::new(|| Arc::new(InMemory::new()));
+
+pub(crate) static SESSION_CTX: LazyLock<Arc<SessionContext>> = LazyLock::new(|| {
+    let mut config = SessionConfig::new();
+    config.options_mut().sql_parser.dialect = "PostgreSQL".to_string();
+    let ctx = Arc::new(SessionContext::new_with_config(config));
+    let object_store_url = ObjectStoreUrl::parse("mem://").unwrap();
+    let object_store = INMEMORY_STORE.clone();
+    ctx.register_object_store(object_store_url.as_ref(), object_store);
+    ctx
+});
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ParquetReader {
@@ -190,10 +205,9 @@ impl std::fmt::Display for ParquetInfo {
 }
 
 async fn execute_query_async(
-    query: String,
-    table_name: String,
+    query: &str,
 ) -> Result<(Vec<arrow::array::RecordBatch>, Arc<dyn ExecutionPlan>), String> {
-    let (results, physical_plan) = execute_query_inner(&table_name, &query)
+    let (results, physical_plan) = execute_query_inner(query)
         .await
         .map_err(|e| format!("Failed to execute query: {}", e))?;
 
@@ -269,15 +283,7 @@ fn App() -> impl IntoView {
                 let Some(parquet_reader) = parquet_reader.get() else {
                     return;
                 };
-                let api_key = get_stored_value(ANTHROPIC_API_KEY, "");
-                let sql = match query_input::user_input_to_sql(
-                    &user_input,
-                    &parquet_reader.info().schema,
-                    parquet_reader.table_name(),
-                    &api_key,
-                )
-                .await
-                {
+                let sql = match query_input::user_input_to_sql(&user_input, &parquet_reader).await {
                     Ok(response) => response,
                     Err(e) => {
                         set_error_message.set(Some(e));
@@ -301,13 +307,12 @@ fn App() -> impl IntoView {
                 return;
             }
 
-            if let Some(parquet_table) = bytes_opt {
+            if let Some(_parquet_table) = bytes_opt {
                 let query = query.clone();
                 let export_to = export_to.clone();
-                let table_name = parquet_table.table_name;
 
                 leptos::task::spawn_local(async move {
-                    match execute_query_async(query.clone(), table_name).await {
+                    match execute_query_async(&query).await {
                         Ok((results, physical_plan)) => {
                             if let Some(export_to) = export_to {
                                 if export_to == "csv" {
@@ -316,8 +321,18 @@ fn App() -> impl IntoView {
                                     export_to_parquet_inner(&results);
                                 }
                             }
+
                             set_query_results.update(|r| {
                                 let id = r.len();
+                                if let Some(first_batch) = results.first() {
+                                    let schema = first_batch.schema();
+                                    let mem_table =
+                                        MemTable::try_new(schema, vec![results.clone()]).unwrap();
+                                    SESSION_CTX
+                                        .as_ref()
+                                        .register_table(format!("view_{}", id), Arc::new(mem_table))
+                                        .unwrap();
+                                }
                                 r.push(QueryResult::new(
                                     id,
                                     query,

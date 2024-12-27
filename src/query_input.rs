@@ -4,9 +4,7 @@ use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use datafusion::{
     error::DataFusionError,
-    execution::object_store::ObjectStoreUrl,
     physical_plan::{collect, ExecutionPlan},
-    prelude::{ParquetReadOptions, SessionConfig},
 };
 use leptos::{logging, prelude::*};
 use leptos::{
@@ -17,27 +15,15 @@ use serde_json::json;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{js_sys, Headers, Request, RequestInit, RequestMode, Response};
 
-use crate::INMEMORY_STORE;
+use crate::{
+    settings::{get_stored_value, ANTHROPIC_API_KEY},
+    ParquetReader, SESSION_CTX,
+};
 
 pub(crate) async fn execute_query_inner(
-    table_name: &str,
     query: &str,
 ) -> Result<(Vec<RecordBatch>, Arc<dyn ExecutionPlan>), DataFusionError> {
-    let mut config = SessionConfig::new();
-    config.options_mut().sql_parser.dialect = "PostgreSQL".to_string();
-
-    let ctx = datafusion::prelude::SessionContext::new_with_config(config);
-
-    let object_store_url = ObjectStoreUrl::parse("mem://").unwrap();
-    let object_store = INMEMORY_STORE.clone();
-    ctx.register_object_store(object_store_url.as_ref(), object_store);
-    ctx.register_parquet(
-        table_name,
-        &format!("mem:///{}", table_name),
-        ParquetReadOptions::default(),
-    )
-    .await?;
-
+    let ctx = SESSION_CTX.as_ref();
     let plan = ctx.sql(query).await?;
 
     let (state, plan) = plan.into_parts();
@@ -137,9 +123,7 @@ pub fn QueryInput(
 
 pub(crate) async fn user_input_to_sql(
     input: &str,
-    schema: &SchemaRef,
-    file_name: &str,
-    api_key: &str,
+    parquet_reader: &ParquetReader,
 ) -> Result<String, String> {
     // if the input seems to be a SQL query, return it as is
     if input.starts_with("select") || input.starts_with("SELECT") {
@@ -148,6 +132,9 @@ pub(crate) async fn user_input_to_sql(
 
     // otherwise, treat it as some natural language
 
+    let schema = &parquet_reader.info().schema;
+    let file_name = parquet_reader.table_name();
+    let api_key = get_stored_value(ANTHROPIC_API_KEY, "");
     let schema_str = schema_to_brief_str(schema);
     logging::log!("Processing user input: {}", input);
 
@@ -157,7 +144,7 @@ pub(crate) async fn user_input_to_sql(
     );
     logging::log!("{}", prompt);
 
-    let sql = match generate_sql_via_claude(&prompt, api_key).await {
+    let sql = match generate_sql_via_claude(&prompt, &api_key).await {
         Ok(response) => response,
         Err(e) => {
             logging::log!("{}", e);

@@ -144,6 +144,12 @@ pub fn QueryResultView(result: QueryResult) -> impl IntoView {
             <div class="relative">
                 <div class="absolute top-0 right-0 z-10">
                     <div class="flex items-center gap-1 rounded-md">
+                        <div class="text-sm text-gray-500 font-mono relative group">
+                            <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+                                {format!("SELECT * FROM view_{}", result.id())}
+                            </span>
+                            {format!("view_{}", result.id())}
+                        </div>
                         <button
                             class="p-2 text-gray-500 hover:text-gray-700 relative group"
                             aria-label="Export to CSV"

@@ -6,7 +6,7 @@ use object_store::{ObjectStore, PutPayload};
 use opendal::{services::Http, services::S3, Operator};
 use web_sys::{js_sys, Url};
 
-use crate::{ParquetTable, INMEMORY_STORE};
+use crate::{ParquetTable, INMEMORY_STORE, SESSION_CTX};
 
 const S3_ENDPOINT_KEY: &str = "s3_endpoint";
 const S3_ACCESS_KEY_ID_KEY: &str = "s3_access_key_id";
@@ -36,10 +36,18 @@ async fn update_file(
     parquet_table: ParquetTable,
     parquet_table_setter: WriteSignal<Option<ParquetTable>>,
 ) {
+    let ctx = SESSION_CTX.as_ref();
     let object_store = &*INMEMORY_STORE;
     let path = Path::parse(&parquet_table.table_name).unwrap();
     let payload = PutPayload::from_bytes(parquet_table.bytes.clone());
     object_store.put(&path, payload).await.unwrap();
+    ctx.register_parquet(
+        &parquet_table.table_name,
+        &format!("mem:///{}", parquet_table.table_name),
+        Default::default(),
+    )
+    .await
+    .unwrap();
     parquet_table_setter.set(Some(parquet_table));
 }
 
