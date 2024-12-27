@@ -316,7 +316,13 @@ fn App() -> impl IntoView {
                                 }
                             }
                             set_query_results.update(|r| {
-                                r.push(QueryResult::new(query, Arc::new(results), physical_plan));
+                                let id = r.len();
+                                r.push(QueryResult::new(
+                                    id,
+                                    query,
+                                    Arc::new(results),
+                                    physical_plan,
+                                ));
                             });
                         }
                         Err(e) => set_error_message.set(Some(e)),
@@ -374,7 +380,6 @@ fn App() -> impl IntoView {
                     set_parquet_table=set_parquet_table
                 />
 
-                <div class="border-t border-gray-300 my-4"></div>
 
                 {move || {
                     error_message
@@ -423,20 +428,21 @@ fn App() -> impl IntoView {
                     }}
                 </div>
 
-                {move || {
-                    view! {
-                        <div class="space-y-4">
-                            {query_results
-                                .get()
-                                .into_iter()
-                                .rev()
-                                .map(|result| {
-                                    view! { <QueryResultView result=result /> }
-                                })
-                                .collect_view()}
-                        </div>
-                    }
-                }}
+                <div class="space-y-4">
+                    <For
+                        each=move || query_results.get().into_iter().rev()
+                        key=|result| result.id()
+                        children=move |result| {
+                            view! {
+                                <div class="transform transition-all duration-300 ease-out animate-slide-in">
+                                    <QueryResultView result=result />
+                                </div>
+                            }
+                        }
+                    />
+                </div>
+
+                <div class="border-t border-gray-300 my-4"></div>
 
                 <div class="mt-8">
                     {move || {
