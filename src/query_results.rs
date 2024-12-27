@@ -17,7 +17,7 @@ use web_sys::wasm_bindgen::JsCast;
 
 pub(crate) fn export_to_csv_inner(query_result: &[RecordBatch]) {
     let mut csv_data = String::new();
-    
+
     // Headers remain the same as they're based on schema
     let headers: Vec<String> = query_result[0]
         .schema()
@@ -73,9 +73,7 @@ pub(crate) fn export_to_parquet_inner(query_result: &[RecordBatch]) {
 
     // Write all record batches
     for batch in query_result {
-        writer
-            .write(batch)
-            .expect("Failed to write record batch");
+        writer.write(batch).expect("Failed to write record batch");
     }
 
     writer.close().expect("Failed to close writer");
@@ -100,19 +98,35 @@ pub(crate) fn export_to_parquet_inner(query_result: &[RecordBatch]) {
     web_sys::Url::revoke_object_url(&url).unwrap();
 }
 
-#[component]
-pub fn QueryResults(
+#[derive(Debug, Clone)]
+pub(crate) struct QueryResult {
     sql_query: String,
-    query_result: Vec<RecordBatch>,
+    query_result: Arc<Vec<RecordBatch>>,
     physical_plan: Arc<dyn ExecutionPlan>,
-) -> impl IntoView {
+}
+
+impl QueryResult {
+    pub fn new(
+        sql_query: String,
+        query_result: Arc<Vec<RecordBatch>>,
+        physical_plan: Arc<dyn ExecutionPlan>,
+    ) -> Self {
+        Self {
+            sql_query,
+            query_result,
+            physical_plan,
+        }
+    }
+}
+
+#[component]
+pub fn QueryResultView(result: QueryResult) -> impl IntoView {
     let (active_tab, set_active_tab) = signal("results".to_string());
-    let query_result = Arc::new(query_result);
 
-    let query_result_clone1 = query_result.clone();
-    let query_result_clone2 = query_result.clone();
+    let query_result_clone1 = result.query_result.clone();
+    let query_result_clone2 = result.query_result.clone();
 
-    let sql = sql_query.clone();
+    let sql = result.sql_query.clone();
 
     view! {
         <div class="mt-4 p-4 bg-white border border-gray-300 rounded-md">
@@ -131,8 +145,19 @@ pub fn QueryResults(
                         <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
                             "Export to CSV"
                         </span>
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-5 w-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                            />
                         </svg>
                     </button>
                     <button
@@ -145,8 +170,19 @@ pub fn QueryResults(
                         <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
                             "Export to Parquet"
                         </span>
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-5 w-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                            />
                         </svg>
                     </button>
                     <button
@@ -161,16 +197,27 @@ pub fn QueryResults(
                     >
                         <style>
                             {".animate-on-click:active { animation: quick-bounce 0.2s; }
-                              @keyframes quick-bounce {
-                                0%, 100% { transform: scale(1); }
-                                50% { transform: scale(0.95); }
-                              }"}
+                            @keyframes quick-bounce {
+                            0%, 100% { transform: scale(1); }
+                            50% { transform: scale(0.95); }
+                            }"}
                         </style>
                         <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
                             "Copy SQL"
                         </span>
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-5 w-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                            />
                         </svg>
                     </button>
                 </div>
@@ -218,7 +265,8 @@ pub fn QueryResults(
                             <table class="min-w-full bg-white border border-gray-300 table-fixed">
                                 <thead class="sticky top-0 z-10">
                                     <tr class="bg-gray-100">
-                                        {query_result[0]
+                                        {result
+                                            .query_result[0]
                                             .schema()
                                             .fields()
                                             .iter()
@@ -241,13 +289,13 @@ pub fn QueryResults(
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(0..query_result[0].num_rows())
+                                    {(0..result.query_result[0].num_rows())
                                         .map(|row_idx| {
                                             view! {
                                                 <tr class="hover:bg-gray-50">
-                                                    {(0..query_result[0].num_columns())
+                                                    {(0..result.query_result[0].num_columns())
                                                         .map(|col_idx| {
-                                                            let column = query_result[0].column(col_idx);
+                                                            let column = result.query_result[0].column(col_idx);
                                                             let cell_value = if column.is_null(row_idx) {
                                                                 "NULL".to_string()
                                                             } else {
@@ -256,11 +304,7 @@ pub fn QueryResults(
 
                                                             view! {
                                                                 <td class="px-4 py-1 border-b w-48 min-w-48 leading-tight text-gray-700">
-                                                                    <div
-                                                                        title=cell_value.clone()
-                                                                    >
-                                                                        {cell_value.clone()}
-                                                                    </div>
+                                                                    <div title=cell_value.clone()>{cell_value.clone()}</div>
                                                                 </td>
                                                             }
                                                         })
@@ -276,7 +320,7 @@ pub fn QueryResults(
                         .into_any()
                 }
                 "physical_plan" => {
-                    view! { <PhysicalPlan physical_plan=physical_plan.clone() /> }.into_any()
+                    view! { <PhysicalPlan physical_plan=result.physical_plan.clone() /> }.into_any()
                 }
                 _ => view! { <p>"Invalid tab"</p> }.into_any(),
             }}

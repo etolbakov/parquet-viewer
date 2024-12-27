@@ -7,7 +7,7 @@ use leptos_router::{
 };
 
 use object_store::memory::InMemory;
-use query_results::{export_to_csv_inner, export_to_parquet_inner, QueryResults};
+use query_results::{export_to_csv_inner, export_to_parquet_inner, QueryResult, QueryResultView};
 use schema::SchemaSection;
 
 mod file_reader;
@@ -215,8 +215,8 @@ fn App() -> impl IntoView {
     let export_to = use_query_map().with(|map| map.get("export").map(|v| v.to_string()));
 
     let (sql_query, set_sql_query) = signal(String::new());
-    let (query_result, set_query_result) = signal(Vec::<arrow::array::RecordBatch>::new());
-    let (physical_plan, set_physical_plan) = signal(None::<Arc<dyn ExecutionPlan>>);
+    let (query_results, set_query_results) = signal(Vec::<QueryResult>::new());
+
     let (show_settings, set_show_settings) = signal(false);
 
     let parquet_reader = Memo::new(move |_| {
@@ -308,7 +308,6 @@ fn App() -> impl IntoView {
                 leptos::task::spawn_local(async move {
                     match execute_query_async(query.clone(), table_name).await {
                         Ok((results, physical_plan)) => {
-                            set_physical_plan.set(Some(physical_plan));
                             if let Some(export_to) = export_to {
                                 if export_to == "csv" {
                                     export_to_csv_inner(&results);
@@ -316,7 +315,9 @@ fn App() -> impl IntoView {
                                     export_to_parquet_inner(&results);
                                 }
                             }
-                            set_query_result.set(results);
+                            set_query_results.update(|r| {
+                                r.push(QueryResult::new(query, Arc::new(results), physical_plan));
+                            });
                         }
                         Err(e) => set_error_message.set(Some(e)),
                     }
@@ -423,19 +424,17 @@ fn App() -> impl IntoView {
                 </div>
 
                 {move || {
-                    let result = query_result.get();
-                    if result.is_empty() {
-                        ().into_any()
-                    } else {
-                        let physical_plan = physical_plan.get().unwrap();
-                        view! {
-                            <QueryResults
-                                sql_query=sql_query.get()
-                                query_result=result
-                                physical_plan=physical_plan
-                            />
-                        }
-                            .into_any()
+                    view! {
+                        <div class="space-y-4">
+                            {query_results
+                                .get()
+                                .into_iter()
+                                .rev()
+                                .map(|result| {
+                                    view! { <QueryResultView result=result /> }
+                                })
+                                .collect_view()}
+                        </div>
                     }
                 }}
 
