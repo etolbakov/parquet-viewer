@@ -225,6 +225,8 @@ fn App() -> impl IntoView {
             .and_then(|table| ParquetReader::new(table).ok())
     });
 
+    let (force_update_user_input, set_force_update_user_input) = signal(false);
+
     Effect::watch(
         parquet_reader,
         move |reader, old_reader, _| {
@@ -240,9 +242,8 @@ fn App() -> impl IntoView {
                 }
                 None => match user_input.get() {
                     Some(user_input) => {
-                        // force update
-                        let new_input = format!("{} ", user_input);
-                        set_user_input.set(Some(new_input));
+                        set_user_input.set(Some(user_input));
+                        set_force_update_user_input.set(true);
                     }
                     None => {
                         logging::log!("{}", reader.info().to_string());
@@ -257,9 +258,9 @@ fn App() -> impl IntoView {
     );
 
     Effect::watch(
-        user_input,
-        move |user_input, _, _| {
-            let Some(user_input_str) = user_input else {
+        move || (force_update_user_input.get(), user_input.get()),
+        move |(_, user_input_str), _, _| {
+            let Some(user_input_str) = user_input_str else {
                 return;
             };
 

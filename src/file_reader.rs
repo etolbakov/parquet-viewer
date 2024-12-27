@@ -37,7 +37,7 @@ async fn update_file(
     parquet_table_setter: WriteSignal<Option<ParquetTable>>,
 ) {
     let object_store = &*INMEMORY_STORE;
-    let path = Path::parse(format!("{}.parquet", parquet_table.table_name)).unwrap();
+    let path = Path::parse(format!("{}", parquet_table.table_name)).unwrap();
     let payload = PutPayload::from_bytes(parquet_table.bytes.clone());
     object_store.put(&path, payload).await.unwrap();
     parquet_table_setter.set(Some(parquet_table));
@@ -155,11 +155,7 @@ pub fn FileReader(
         let file_reader = web_sys::FileReader::new().unwrap();
         let file_reader_clone = file_reader.clone();
 
-        let table_name = file
-            .name()
-            .strip_suffix(".parquet")
-            .unwrap_or(&file.name())
-            .to_string();
+        let table_name = file.name();
 
         let onload = Closure::wrap(Box::new(move |_: web_sys::Event| {
             let table_name = table_name.clone();
@@ -196,8 +192,6 @@ pub fn FileReader(
             .split('/')
             .last()
             .unwrap_or("uploaded.parquet")
-            .strip_suffix(".parquet")
-            .unwrap_or("uploaded")
             .to_string();
 
         leptos::task::spawn_local(async move {
@@ -243,8 +237,6 @@ pub fn FileReader(
             .split('/')
             .last()
             .unwrap_or("uploaded.parquet")
-            .strip_suffix(".parquet")
-            .unwrap_or("uploaded")
             .to_string();
 
         leptos::task::spawn_local(async move {
@@ -315,7 +307,7 @@ pub fn FileReader(
                             let base = "py-2 px-1 border-b-2 font-medium text-sm";
                             if let Some(active_t) = active_tab.get() {
                                 if active_t == "file" {
-                                    return format!("{} border-blue-500 text-blue-600", base);
+                                    return format!("{} border-green-500 text-green-600", base);
                                 }
                             }
                             format!(
@@ -332,7 +324,7 @@ pub fn FileReader(
                             let base = "py-2 px-1 border-b-2 font-medium text-sm";
                             if let Some(active_t) = active_tab.get() {
                                 if active_t == "url" {
-                                    return format!("{} border-blue-500 text-blue-600", base);
+                                    return format!("{} border-green-500 text-green-600", base);
                                 }
                             }
                             format!(
@@ -349,7 +341,7 @@ pub fn FileReader(
                             let base = "py-2 px-1 border-b-2 font-medium text-sm";
                             if let Some(active_t) = active_tab.get() {
                                 if active_t == "s3" {
-                                    return format!("{} border-blue-500 text-blue-600", base);
+                                    return format!("{} border-green-500 text-green-600", base);
                                 }
                             }
                             format!(
@@ -420,11 +412,11 @@ pub fn FileReader(
                                                     set_url.set(event_target_value(&ev));
                                                 }
                                                 prop:value=url
-                                                class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                                             />
                                             <button
                                                 type="submit"
-                                                class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                                                class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
                                             >
                                                 "Load from URL"
                                             </button>
@@ -454,7 +446,7 @@ pub fn FileReader(
                                                 type="text"
                                                 on:input=on_s3_bucket_change
                                                 prop:value=s3_bucket
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                                             />
                                         </div>
                                         <div class="flex-1 min-w-[250px]">
@@ -465,7 +457,7 @@ pub fn FileReader(
                                                 type="text"
                                                 on:input=on_s3_region_change
                                                 prop:value=s3_region
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                                             />
                                         </div>
                                         <div class="flex-1 min-w-[250px]">
@@ -476,13 +468,13 @@ pub fn FileReader(
                                                 type="text"
                                                 on:input=on_s3_file_path_change
                                                 prop:value=s3_file_path
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                                             />
                                         </div>
                                         <div class="flex-1 min-w-[150px] max-w-[250px] self-end">
                                             <button
                                                 type="submit"
-                                                class="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                                                class="w-full px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
                                             >
                                                 "Read from S3"
                                             </button>

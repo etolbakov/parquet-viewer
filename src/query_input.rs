@@ -33,7 +33,7 @@ pub(crate) async fn execute_query_inner(
     ctx.register_object_store(object_store_url.as_ref(), object_store);
     ctx.register_parquet(
         table_name,
-        &format!("mem:///{}.parquet", table_name),
+        &format!("mem:///{}", table_name),
         ParquetReadOptions::default(),
     )
     .await?;
@@ -101,7 +101,7 @@ pub fn QueryInput(
                     on:input=move |ev| set_input_value(Some(event_target_value(&ev)))
                     prop:value=input_value
                     on:keydown=key_down
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
                 <div class="flex items-center gap-1">
                     <button

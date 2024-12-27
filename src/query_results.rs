@@ -132,127 +132,136 @@ pub fn QueryResultView(result: QueryResult) -> impl IntoView {
     let query_result_clone1 = result.query_result.clone();
     let query_result_clone2 = result.query_result.clone();
     let sql = result.sql_query.clone();
+    let sql_clone = sql.clone();
 
+    Effect::new(move |_| {
+        let _window = web_sys::window().unwrap();
+        let _ = js_sys::eval("hljs.highlightAll()");
+        || ()
+    });
     view! {
         <div class="mt-4 p-4 bg-white border border-gray-300 rounded-md hover:shadow-lg transition-shadow duration-200">
-            <div class="flex justify-between items-center mb-4">
-                <div class="p-2 border border-gray-200 font-mono text-sm overflow-x-auto relative group flex-grow">
-                    {sql.clone()}
+            <div class="relative">
+                <div class="absolute top-0 right-0 z-10">
+                    <div class="flex items-center gap-1 rounded-md">
+                        <button
+                            class="p-2 text-gray-500 hover:text-gray-700 relative group"
+                            aria-label="Export to CSV"
+                            on:click=move |_| {
+                                export_to_csv_inner(&query_result_clone2);
+                            }
+                        >
+                            <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+                                "Export to CSV"
+                            </span>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                                />
+                            </svg>
+                        </button>
+                        <button
+                            class="p-2 text-gray-500 hover:text-gray-700 relative group"
+                            aria-label="Export to Parquet"
+                            on:click=move |_| {
+                                export_to_parquet_inner(&query_result_clone1);
+                            }
+                        >
+                            <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+                                "Export to Parquet"
+                            </span>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                                />
+                            </svg>
+                        </button>
+                        <button
+                            class="p-2 text-gray-500 hover:text-gray-700 relative group animate-on-click"
+                            aria-label="Copy SQL"
+                            on:click=move |_| {
+                                let window = web_sys::window().unwrap();
+                                let navigator = window.navigator();
+                                let clipboard = navigator.clipboard();
+                                let _ = clipboard.write_text(&sql);
+                            }
+                        >
+                            <style>
+                                {".animate-on-click:active { animation: quick-bounce 0.2s; }
+                                @keyframes quick-bounce {
+                                0%, 100% { transform: scale(1); }
+                                50% { transform: scale(0.95); }
+                                }"}
+                            </style>
+                            <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+                                "Copy SQL"
+                            </span>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                                />
+                            </svg>
+                        </button>
+                        <button
+                            class=move || {
+                                format!(
+                                    "p-2 text-gray-500 hover:text-gray-700 relative group {}",
+                                    if show_plan() { "text-blue-600" } else { "" },
+                                )
+                            }
+                            aria-label="Execution plan"
+                            on:click=move |_| set_show_plan.update(|v| *v = !*v)
+                        >
+                            <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+                                "Execution plan"
+                            </span>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                                />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
-                <div class="flex items-center gap-2 ml-4">
-                    <button
-                        class="p-2 text-gray-500 hover:text-gray-700 relative group"
-                        aria-label="Export to CSV"
-                        on:click=move |_| {
-                            export_to_csv_inner(&query_result_clone2);
-                        }
-                    >
-                        <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
-                            "Export to CSV"
-                        </span>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-5 w-5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                            />
-                        </svg>
-                    </button>
-                    <button
-                        class="p-2 text-gray-500 hover:text-gray-700 relative group"
-                        aria-label="Export to Parquet"
-                        on:click=move |_| {
-                            export_to_parquet_inner(&query_result_clone1);
-                        }
-                    >
-                        <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
-                            "Export to Parquet"
-                        </span>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-5 w-5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                            />
-                        </svg>
-                    </button>
-                    <button
-                        class="p-2 text-gray-500 hover:text-gray-700 relative group animate-on-click"
-                        aria-label="Copy SQL"
-                        on:click=move |_| {
-                            let window = web_sys::window().unwrap();
-                            let navigator = window.navigator();
-                            let clipboard = navigator.clipboard();
-                            let _ = clipboard.write_text(&sql);
-                        }
-                    >
-                        <style>
-                            {".animate-on-click:active { animation: quick-bounce 0.2s; }
-                            @keyframes quick-bounce {
-                            0%, 100% { transform: scale(1); }
-                            50% { transform: scale(0.95); }
-                            }"}
-                        </style>
-                        <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
-                            "Copy SQL"
-                        </span>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-5 w-5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
-                            />
-                        </svg>
-                    </button>
-                    <button
-                        class=move || {
-                            format!(
-                                "p-2 text-gray-500 hover:text-gray-700 relative group {}",
-                                if show_plan() { "text-blue-600" } else { "" },
-                            )
-                        }
-                        aria-label="Execution plan"
-                        on:click=move |_| set_show_plan.update(|v| *v = !*v)
-                    >
-                        <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
-                            "Execution plan"
-                        </span>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-5 w-5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-                            />
-                        </svg>
-                    </button>
+
+                <div class="font-mono text-sm overflow-x-auto relative group flex-grow mb-4">
+                    <pre><code class="language-sql">{sql_clone}</code></pre>
                 </div>
             </div>
 
