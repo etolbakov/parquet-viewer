@@ -241,6 +241,15 @@ fn App() -> impl IntoView {
 
     let (force_update_user_input, set_force_update_user_input) = signal(false);
 
+    let toggle_display = move |id: usize| {
+        set_query_results.update(|r| {
+            r.iter_mut()
+                .find(|r| r.id() == id)
+                .unwrap()
+                .toggle_display();
+        });
+    };
+
     Effect::watch(
         parquet_reader,
         move |reader, old_reader, _| {
@@ -445,12 +454,12 @@ fn App() -> impl IntoView {
 
                 <div class="space-y-4">
                     <For
-                        each=move || query_results.get().into_iter().rev()
+                        each=move || query_results.get().into_iter().filter(|r| r.display()).rev()
                         key=|result| result.id()
                         children=move |result| {
                             view! {
                                 <div class="transform transition-all duration-300 ease-out animate-slide-in">
-                                    <QueryResultView result=result />
+                                    <QueryResultView result=result toggle_display=toggle_display />
                                 </div>
                             }
                         }

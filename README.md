@@ -4,8 +4,8 @@ Online at: https://parquet-viewer.xiangpeng.systems
 
 ### Features
 
-- Query parquet data with SQL (if you're resistance) ✅
-- Query parquet data with natural language through LLM (if you're enlightened) ✅
+- Query parquet data with SQL ✅
+- Query parquet data with natural language through LLM  ✅
 - View Parquet metadata ✅
 - View Parquet files from anywhere -- local file, S3, or any URLs ✅
 - Everything runs in the browser, no server, no external dependencies, just a web page ✅

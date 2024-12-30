@@ -151,6 +151,19 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
             page_info,
         )
     };
+    let sorted_fields = {
+        let mut fields = parquet_reader
+            .info()
+            .schema
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (i, f.name()))
+            .collect::<Vec<_>>();
+
+        fields.sort_by(|a, b| a.1.cmp(b.1));
+        fields
+    };
 
     view! {
         <div class="space-y-8">
@@ -225,16 +238,12 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                                 .set(event_target_value(&ev).parse::<usize>().unwrap_or(0))
                         }
                     >
-                        {parquet_reader
-                            .info()
-                            .schema
-                            .fields
+                        {sorted_fields
                             .iter()
-                            .enumerate()
                             .map(|(i, field)| {
                                 view! {
                                     <option value=i.to_string() class="py-2">
-                                        {field.name().clone()}
+                                        {field.to_string()}
                                     </option>
                                 }
                             })
