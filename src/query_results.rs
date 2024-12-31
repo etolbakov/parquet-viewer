@@ -154,154 +154,155 @@ pub fn QueryResultView(
         || ()
     });
     let tooltip_classes = "absolute bottom-full left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none";
-    let base_button_classes = "p-2 text-gray-500 hover:text-gray-700 relative group";
+    let base_button_classes = "p-1 text-gray-500 hover:text-gray-700 relative group";
     let svg_classes = "h-5 w-5";
 
     view! {
-        <div class="mt-4 p-4 bg-white border border-gray-300 rounded-md hover:shadow-lg transition-shadow duration-200">
-            <div class="relative">
-                <div class="absolute top-0 right-0 z-10">
-                    <div class="flex items-center gap-1 rounded-md">
-                        <div class="text-sm text-gray-500 font-mono relative group">
-                            <span class=tooltip_classes>
-                                {format!("SELECT * FROM view_{}", id)}
-                            </span>
-                            {format!("view_{}", id)}
-                        </div>
-                        {
-                            view! {
-                                <button
-                                    class=base_button_classes
-                                    aria-label="Export to CSV"
-                                    on:click=move |_| export_to_csv_inner(&query_result_clone2)
-                                >
-                                    <span class=tooltip_classes>"Export to CSV"</span>
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class=svg_classes
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2"
-                                            d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                                        />
-                                    </svg>
-                                </button>
-                                <button
-                                    class=base_button_classes
-                                    aria-label="Export to Parquet"
-                                    on:click=move |_| export_to_parquet_inner(&query_result_clone1)
-                                >
-                                    <span class=tooltip_classes>"Export to Parquet"</span>
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class=svg_classes
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2"
-                                            d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                                        />
-                                    </svg>
-                                </button>
-                                <button
-                                    class=format!("{} animate-on-click", base_button_classes)
-                                    aria-label="Copy SQL"
-                                    on:click=move |_| {
-                                        let window = web_sys::window().unwrap();
-                                        let navigator = window.navigator();
-                                        let clipboard = navigator.clipboard();
-                                        let _ = clipboard.write_text(&sql);
+        <div class="p-3 bg-white border border-gray-300 rounded-md hover:shadow-lg transition-shadow duration-200">
+                <div class="flex items-center mb-4">
+                    <div class="w-3/4 font-mono text-sm overflow-auto relative group max-h-[200px]">
+                        <pre class="whitespace-pre">
+                            <code class="language-sql">{sql_clone}</code>
+                        </pre>
+                    </div>
+                    <div class="w-1/4">
+                        <div class="flex justify-end">
+                            <div class="flex items-center rounded-md">
+                                <div class="text-sm text-gray-500 font-mono relative group">
+                                    <span class=tooltip_classes>
+                                        {format!("SELECT * FROM view_{}", id)}
+                                    </span>
+                                    {format!("view_{}", id)}
+                                </div>
+                                {
+                                    view! {
+                                        <button
+                                            class=base_button_classes
+                                            aria-label="Export to CSV"
+                                            on:click=move |_| export_to_csv_inner(&query_result_clone2)
+                                        >
+                                            <span class=tooltip_classes>"Export to CSV"</span>
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                class=svg_classes
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                                                />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            class=base_button_classes
+                                            aria-label="Export to Parquet"
+                                            on:click=move |_| export_to_parquet_inner(&query_result_clone1)
+                                        >
+                                            <span class=tooltip_classes>"Export to Parquet"</span>
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                class=svg_classes
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                                                />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            class=format!("{} animate-on-click", base_button_classes)
+                                            aria-label="Copy SQL"
+                                            on:click=move |_| {
+                                                let window = web_sys::window().unwrap();
+                                                let navigator = window.navigator();
+                                                let clipboard = navigator.clipboard();
+                                                let _ = clipboard.write_text(&sql);
+                                            }
+                                        >
+                                            <style>
+                                                {".animate-on-click:active { animation: quick-bounce 0.2s; }
+                                                @keyframes quick-bounce {
+                                                0%, 100% { transform: scale(1); }
+                                                50% { transform: scale(0.95); }
+                                                }"}
+                                            </style>
+                                            <span class=tooltip_classes>"Copy SQL"</span>
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                class=svg_classes
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                                                />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            class=format!(
+                                                "{} {}",
+                                                base_button_classes,
+                                                if show_plan() { "text-blue-600" } else { "" },
+                                            )
+                                            aria-label="Execution plan"
+                                            on:click=move |_| set_show_plan.update(|v| *v = !*v)
+                                        >
+                                            <span class=tooltip_classes>"Execution plan"</span>
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                class=svg_classes
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                                                />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            class=format!("{} hover:text-red-600", base_button_classes)
+                                            aria-label="Hide"
+                                            on:click=move |_| toggle_display(id)
+                                        >
+                                            <span class=tooltip_classes>"Hide"</span>
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                class=svg_classes
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M6 18L18 6M6 6l12 12"
+                                                />
+                                            </svg>
+                                        </button>
                                     }
-                                >
-                                    <style>
-                                        {".animate-on-click:active { animation: quick-bounce 0.2s; }
-                                        @keyframes quick-bounce {
-                                        0%, 100% { transform: scale(1); }
-                                        50% { transform: scale(0.95); }
-                                        }"}
-                                    </style>
-                                    <span class=tooltip_classes>"Copy SQL"</span>
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class=svg_classes
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2"
-                                            d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
-                                        />
-                                    </svg>
-                                </button>
-                                <button
-                                    class=format!(
-                                        "{} {}",
-                                        base_button_classes,
-                                        if show_plan() { "text-blue-600" } else { "" },
-                                    )
-                                    aria-label="Execution plan"
-                                    on:click=move |_| set_show_plan.update(|v| *v = !*v)
-                                >
-                                    <span class=tooltip_classes>"Execution plan"</span>
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class=svg_classes
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2"
-                                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-                                        />
-                                    </svg>
-                                </button>
-                                <button
-                                    class=format!("{} hover:text-red-600", base_button_classes)
-                                    aria-label="Hide"
-                                    on:click=move |_| toggle_display(id)
-                                >
-                                    <span class=tooltip_classes>"Hide"</span>
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class=svg_classes
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2"
-                                            d="M6 18L18 6M6 6l12 12"
-                                        />
-                                    </svg>
-                                </button>
-                            }
-                        }
+                                }
+                            </div>
+                        </div>
                     </div>
                 </div>
-
-                <div class="font-mono text-sm overflow-x-auto relative group flex-grow mb-4">
-                    <pre>
-                        <code class="language-sql">{sql_clone}</code>
-                    </pre>
-                </div>
-            </div>
 
             {move || {
                 show_plan()
@@ -316,8 +317,8 @@ pub fn QueryResultView(
 
             <div class="max-h-[32rem] overflow-auto relative">
                 <table class="min-w-full bg-white table-fixed">
-                    <thead class="sticky top-0 z-10">
-                        <tr class="bg-gray-100">
+                    <thead class="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(229,231,235)]">
+                        <tr class="border-b border-gray-200">
                             {result
                                 .query_result[0]
                                 .schema()
@@ -325,7 +326,7 @@ pub fn QueryResultView(
                                 .iter()
                                 .map(|field| {
                                     view! {
-                                        <th class="px-4 py-1 text-left w-48 min-w-48 bg-gray-100 leading-tight text-gray-700">
+                                        <th class="px-4 py-1 text-left w-48 min-w-48 leading-tight text-gray-700">
                                             <div class="truncate" title=field.name().clone()>
                                                 {field.name().clone()}
                                             </div>
