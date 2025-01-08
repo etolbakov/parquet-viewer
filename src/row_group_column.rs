@@ -1,7 +1,16 @@
 use std::sync::Arc;
 
+use bytes::{Buf, Bytes};
 use leptos::prelude::*;
-use parquet::file::{reader::SerializedPageReader, statistics::Statistics};
+use parquet::{
+    arrow::async_reader::AsyncFileReader,
+    basic::{Compression, Encoding, PageType},
+    errors::ParquetError,
+    file::{
+        reader::{ChunkReader, Length, SerializedPageReader},
+        statistics::Statistics,
+    },
+};
 
 use crate::format_rows;
 
@@ -102,55 +111,53 @@ fn stats_to_string(stats: Option<Statistics>) -> String {
     }
 }
 
+#[derive(Clone)]
+struct ColumnInfo {
+    compressed_size: f64,
+    uncompressed_size: f64,
+    compression: Compression,
+    statistics: Option<Statistics>,
+    page_info: Vec<(PageType, f64, u32, Encoding)>,
+}
+
+struct ColumnChunk {
+    data: Bytes,
+    byte_range: (u64, u64),
+}
+
+impl Length for ColumnChunk {
+    fn len(&self) -> u64 {
+        self.byte_range.1 - self.byte_range.0
+    }
+}
+
+impl ChunkReader for ColumnChunk {
+    type T = bytes::buf::Reader<Bytes>;
+    fn get_read(&self, offset: u64) -> Result<Self::T, ParquetError> {
+        let start = offset - self.byte_range.0;
+        Ok(self.data.slice(start as usize..).reader())
+    }
+
+    fn get_bytes(&self, offset: u64, length: usize) -> Result<Bytes, ParquetError> {
+        let start = offset - self.byte_range.0;
+        Ok(self.data.slice(start as usize..(start as usize + length)))
+    }
+}
+
 #[component]
 pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
     let (selected_row_group, set_selected_row_group) = signal(0);
     let (selected_column, set_selected_column) = signal(0);
 
-    let parquet_info_clone = parquet_reader.info().clone();
+    let metadata = parquet_reader.info().metadata.clone();
     let row_group_info = move || {
-        let rg = parquet_info_clone
-            .metadata
-            .row_group(selected_row_group.get());
+        let rg = metadata.row_group(selected_row_group.get());
         let compressed_size = rg.compressed_size() as f64 / 1_048_576.0;
         let uncompressed_size = rg.total_byte_size() as f64 / 1_048_576.0;
         let num_rows = rg.num_rows() as u64;
         (compressed_size, uncompressed_size, num_rows)
     };
 
-    let parquet_info_clone = parquet_reader.info().clone();
-    let parquet_bytes = parquet_reader.bytes().clone();
-    let column_info = move || {
-        let rg = parquet_info_clone
-            .metadata
-            .row_group(selected_row_group.get());
-        let col = rg.column(selected_column.get());
-        let row_count = rg.num_rows();
-        let compressed_size = col.compressed_size() as f64 / 1_048_576.0;
-        let uncompressed_size = col.uncompressed_size() as f64 / 1_048_576.0;
-        let compression = col.compression();
-        let statistics = col.statistics().cloned();
-
-        let parquet_bytes = Arc::new(parquet_bytes.clone());
-        let page_reader =
-            SerializedPageReader::new(parquet_bytes, col, row_count as usize, None).unwrap();
-
-        let mut page_info = Vec::new();
-        for page in page_reader.flatten() {
-            let page_type = page.page_type();
-            let page_size = page.buffer().len() as f64 / 1024.0;
-            let num_values = page.num_values();
-            page_info.push((page_type, page_size, num_values, page.encoding()));
-        }
-
-        (
-            compressed_size,
-            uncompressed_size,
-            compression,
-            statistics,
-            page_info,
-        )
-    };
     let sorted_fields = {
         let mut fields = parquet_reader
             .info()
@@ -164,6 +171,65 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
         fields.sort_by(|a, b| a.1.cmp(b.1));
         fields
     };
+
+    let metadata = parquet_reader.info().metadata.clone();
+    let column_byte_range = move || {
+        let rg = metadata.row_group(selected_row_group.get());
+        let col = rg.column(selected_column.get());
+        col.byte_range()
+    };
+
+    let (column_info, set_column_info) = signal(None::<ColumnInfo>);
+
+    let metadata = parquet_reader.info().metadata.clone();
+    let reader = parquet_reader.parquet_table.reader.clone();
+    Effect::watch(
+        column_byte_range,
+        move |byte_range, _, _| {
+            let byte_range = byte_range.clone();
+            let metadata = metadata.clone();
+            let mut reader = reader.clone();
+            leptos::task::spawn_local(async move {
+                let bytes = reader
+                    .get_bytes(byte_range.0 as usize..byte_range.1 as usize)
+                    .await
+                    .unwrap();
+                let chunk = ColumnChunk {
+                    data: bytes,
+                    byte_range,
+                };
+
+                let rg = metadata.row_group(selected_row_group.get());
+                let col = rg.column(selected_column.get());
+                let row_count = rg.num_rows();
+                let compressed_size = col.compressed_size() as f64 / 1_048_576.0;
+                let uncompressed_size = col.uncompressed_size() as f64 / 1_048_576.0;
+                let compression = col.compression();
+                let statistics = col.statistics().cloned();
+
+                let page_reader =
+                    SerializedPageReader::new(Arc::new(chunk), col, row_count as usize, None)
+                        .unwrap();
+
+                let mut page_info = Vec::new();
+                for page in page_reader.flatten() {
+                    let page_type = page.page_type();
+                    let page_size = page.buffer().len() as f64 / 1024.0;
+                    let num_values = page.num_values();
+                    page_info.push((page_type, page_size, num_values, page.encoding()));
+                }
+
+                set_column_info.set(Some(ColumnInfo {
+                    compressed_size,
+                    uncompressed_size,
+                    compression,
+                    statistics,
+                    page_info,
+                }));
+            });
+        },
+        true,
+    );
 
     view! {
         <div class="space-y-8">
@@ -252,66 +318,78 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
                 </div>
 
                 {move || {
-                    let (compressed_size, uncompressed_size, compression, statistics, page_info) = column_info();
-                    view! {
-                        <div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md">
-                            <div class="space-y-1">
-                                <div class="text-sm text-gray-500">"Compressed"</div>
-                                <div class="font-medium">
-                                    {format!("{:.2} MB", compressed_size)}
-                                </div>
-                            </div>
-                            <div class="space-y-1">
-                                <div class="text-sm text-gray-500">"Uncompressed"</div>
-                                <div class="font-medium">
-                                    {format!("{:.2} MB", uncompressed_size)}
-                                </div>
-                            </div>
-                            <div class="space-y-1">
-                                <div class="text-sm text-gray-500">"Compression ratio"</div>
-                                <div class="font-medium">
-                                    {format!("{:.1}%", compressed_size / uncompressed_size * 100.0)}
-                                </div>
-                            </div>
-                            <div class="space-y-1">
-                                <div class="text-sm text-gray-500">"Compression Type"</div>
-                                <div class="font-medium">{format!("{:?}", compression)}</div>
-                            </div>
-                            <div class="col-span-2 space-y-1">
-                                <div class="text-sm text-gray-500">"Statistics"</div>
-                                <div class="font-medium text-sm">{stats_to_string(statistics)}</div>
-                            </div>
-                            <div class="col-span-2 space-y-1">
-                                <div class="space-y-0.5">
-                                    <div class="flex gap-4 text-sm text-gray-500">
-                                        <span class="w-4">"#"</span>
-                                        <span class="w-32">"Type"</span>
-                                        <span class="w-16">"Size"</span>
-                                        <span class="w-16">"Rows"</span>
-                                        <span>"Encoding"</span>
-                                    </div>
-                                    <div class="max-h-[250px] overflow-y-auto pr-2">
-                                        {page_info
-                                            .into_iter()
-                                            .enumerate()
-                                            .map(|(i, (page_type, size, values, encoding))| {
-                                                view! {
-                                                    <div class="flex gap-4 text-sm">
-                                                        <span class="w-4">{format!("{}", i)}</span>
-                                                        <span class="w-32">{format!("{:?}", page_type)}</span>
-                                                        <span class="w-16">
-                                                            {format!("{} KB", size.round() as i64)}
-                                                        </span>
-                                                        <span class="w-16">{format_rows(values as u64)}</span>
-                                                        <span>{format!("{:?}", encoding)}</span>
-                                                    </div>
-                                                }
-                                            })
-                                            .collect::<Vec<_>>()}
+                    if let Some(column_info) = column_info.get() {
+                        view! {
+                            <div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md">
+                                <div class="space-y-1">
+                                    <div class="text-sm text-gray-500">"Compressed"</div>
+                                    <div class="font-medium">
+                                        {format!("{:.2} MB", column_info.compressed_size)}
                                     </div>
                                 </div>
+                                <div class="space-y-1">
+                                    <div class="text-sm text-gray-500">"Uncompressed"</div>
+                                    <div class="font-medium">
+                                        {format!("{:.2} MB", column_info.uncompressed_size)}
+                                    </div>
+                                </div>
+                                <div class="space-y-1">
+                                    <div class="text-sm text-gray-500">"Compression ratio"</div>
+                                    <div class="font-medium">
+                                        {format!(
+                                            "{:.1}%",
+                                            column_info.compressed_size / column_info.uncompressed_size
+                                                * 100.0,
+                                        )}
+                                    </div>
+                                </div>
+                                <div class="space-y-1">
+                                    <div class="text-sm text-gray-500">"Compression Type"</div>
+                                    <div class="font-medium">
+                                        {format!("{:?}", column_info.compression)}
+                                    </div>
+                                </div>
+                                <div class="col-span-2 space-y-1">
+                                    <div class="text-sm text-gray-500">"Statistics"</div>
+                                    <div class="font-medium text-sm">
+                                        {stats_to_string(column_info.statistics)}
+                                    </div>
+                                </div>
+                                <div class="col-span-2 space-y-1">
+                                    <div class="space-y-0.5">
+                                        <div class="flex gap-4 text-sm text-gray-500">
+                                            <span class="w-4">"#"</span>
+                                            <span class="w-32">"Type"</span>
+                                            <span class="w-16">"Size"</span>
+                                            <span class="w-16">"Rows"</span>
+                                            <span>"Encoding"</span>
+                                        </div>
+                                        <div class="max-h-[250px] overflow-y-auto pr-2">
+                                            {column_info
+                                                .page_info
+                                                .into_iter()
+                                                .enumerate()
+                                                .map(|(i, (page_type, size, values, encoding))| {
+                                                    view! {
+                                                        <div class="flex gap-4 text-sm">
+                                                            <span class="w-4">{format!("{}", i)}</span>
+                                                            <span class="w-32">{format!("{:?}", page_type)}</span>
+                                                            <span class="w-16">
+                                                                {format!("{} KB", size.round() as i64)}
+                                                            </span>
+                                                            <span class="w-16">{format_rows(values as u64)}</span>
+                                                            <span>{format!("{:?}", encoding)}</span>
+                                                        </div>
+                                                    }
+                                                })
+                                                .collect::<Vec<_>>()}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        }.into_any()
+                    } else {
+                        view! { <div>"Loading..."</div> }.into_any()
                     }
                 }}
             </div>

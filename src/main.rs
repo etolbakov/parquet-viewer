@@ -5,13 +5,12 @@ use datafusion::{
     physical_plan::ExecutionPlan,
     prelude::{SessionConfig, SessionContext},
 };
-use file_reader::FileReader;
+use file_reader::{FileReader, INMEMORY_STORE};
 use leptos_router::{
     components::Router,
     hooks::{query_signal, use_query_map},
 };
 
-use object_store::memory::InMemory;
 use query_results::{export_to_csv_inner, export_to_parquet_inner, QueryResult, QueryResultView};
 use schema::SchemaSection;
 
@@ -25,12 +24,14 @@ use metadata::MetadataSection;
 use std::{sync::Arc, sync::LazyLock};
 
 use arrow::datatypes::SchemaRef;
-use bytes::Bytes;
 use leptos::{logging, prelude::*};
 use parquet::{
-    arrow::parquet_to_arrow_schema,
+    arrow::{
+        async_reader::{AsyncFileReader, ParquetObjectReader},
+        parquet_to_arrow_schema,
+    },
     errors::ParquetError,
-    file::metadata::{ParquetMetaData, ParquetMetaDataReader},
+    file::metadata::ParquetMetaData,
 };
 
 mod query_input;
@@ -38,9 +39,6 @@ use query_input::{execute_query_inner, QueryInput};
 
 mod settings;
 use settings::Settings;
-
-pub(crate) static INMEMORY_STORE: LazyLock<Arc<InMemory>> =
-    LazyLock::new(|| Arc::new(InMemory::new()));
 
 pub(crate) static SESSION_CTX: LazyLock<Arc<SessionContext>> = LazyLock::new(|| {
     let mut config = SessionConfig::new();
@@ -60,19 +58,10 @@ pub(crate) struct ParquetReader {
 
 impl ParquetReader {
     pub fn new(table: ParquetTable) -> Result<Self> {
-        let mut footer = [0_u8; 8];
-        let bytes = &table.bytes;
-        footer.copy_from_slice(&bytes[bytes.len() - 8..]);
-        let metadata_len = ParquetMetaDataReader::decode_footer(&footer)?;
+        let metadata = table.metadata.clone();
+        let size = metadata.memory_size();
 
-        let mut metadata_reader = ParquetMetaDataReader::new()
-            .with_page_indexes(true)
-            .with_column_indexes(true)
-            .with_offset_indexes(true);
-        metadata_reader.try_parse(bytes)?;
-        let metadata = metadata_reader.finish()?;
-
-        let parquet_info = ParquetInfo::from_metadata(metadata, metadata_len as u64)?;
+        let parquet_info = ParquetInfo::from_metadata(metadata, size as u64)?;
 
         Ok(Self {
             parquet_table: table,
@@ -82,10 +71,6 @@ impl ParquetReader {
 
     fn info(&self) -> &ParquetInfo {
         &self.parquet_info
-    }
-
-    fn bytes(&self) -> &Bytes {
-        &self.parquet_table.bytes
     }
 
     fn table_name(&self) -> &str {
@@ -111,7 +96,10 @@ struct ParquetInfo {
 }
 
 impl ParquetInfo {
-    fn from_metadata(metadata: ParquetMetaData, metadata_len: u64) -> Result<Self, ParquetError> {
+    fn from_metadata(
+        metadata: Arc<ParquetMetaData>,
+        metadata_len: u64,
+    ) -> Result<Self, ParquetError> {
         let compressed_size = metadata
             .row_groups()
             .iter()
@@ -155,7 +143,7 @@ impl ParquetInfo {
                 .map(|c| c.bloom_filter_offset().is_some())
                 .unwrap_or(false),
             schema: Arc::new(schema),
-            metadata: Arc::new(metadata),
+            metadata,
             metadata_len,
         })
     }
@@ -214,10 +202,17 @@ async fn execute_query_async(
     Ok((results, physical_plan))
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, Debug)]
 struct ParquetTable {
-    bytes: Bytes,
     table_name: String,
+    reader: ParquetObjectReader,
+    metadata: Arc<ParquetMetaData>,
+}
+
+impl PartialEq for ParquetTable {
+    fn eq(&self, other: &Self) -> bool {
+        self.table_name == other.table_name
+    }
 }
 
 #[component]

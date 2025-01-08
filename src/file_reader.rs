@@ -1,12 +1,21 @@
+use std::sync::{Arc, LazyLock};
+
+use datafusion::execution::object_store::ObjectStoreUrl;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::{prelude::Closure, JsCast};
 use leptos_router::hooks::query_signal;
+use object_store::memory::InMemory;
 use object_store::path::Path;
 use object_store::{ObjectStore, PutPayload};
+use object_store_opendal::OpendalStore;
 use opendal::{services::Http, services::S3, Operator};
-use web_sys::{js_sys, Url};
+use parquet::arrow::async_reader::{AsyncFileReader, ParquetObjectReader};
+use web_sys::js_sys;
 
-use crate::{ParquetTable, INMEMORY_STORE, SESSION_CTX};
+use crate::{ParquetTable, SESSION_CTX};
+
+pub(crate) static INMEMORY_STORE: LazyLock<Arc<InMemory>> =
+    LazyLock::new(|| Arc::new(InMemory::new()));
 
 const S3_ENDPOINT_KEY: &str = "s3_endpoint";
 const S3_ACCESS_KEY_ID_KEY: &str = "s3_access_key_id";
@@ -30,25 +39,6 @@ fn save_to_storage(key: &str, value: &str) {
             let _ = storage.set_item(key, value);
         }
     }
-}
-
-async fn update_file(
-    parquet_table: ParquetTable,
-    parquet_table_setter: WriteSignal<Option<ParquetTable>>,
-) {
-    let ctx = SESSION_CTX.as_ref();
-    let object_store = &*INMEMORY_STORE;
-    let path = Path::parse(&parquet_table.table_name).unwrap();
-    let payload = PutPayload::from_bytes(parquet_table.bytes.clone());
-    object_store.put(&path, payload).await.unwrap();
-    ctx.register_parquet(
-        &parquet_table.table_name,
-        &format!("mem:///{}", parquet_table.table_name),
-        Default::default(),
-    )
-    .await
-    .unwrap();
-    parquet_table_setter.set(Some(parquet_table));
 }
 
 #[component]
@@ -171,9 +161,30 @@ pub fn FileReader(
             let array_buffer = result.dyn_into::<js_sys::ArrayBuffer>().unwrap();
             let uint8_array = js_sys::Uint8Array::new(&array_buffer);
             let bytes = bytes::Bytes::from(uint8_array.to_vec());
-            let parquet_table = ParquetTable { bytes, table_name };
             leptos::task::spawn_local(async move {
-                update_file(parquet_table, set_parquet_table).await;
+                let ctx = SESSION_CTX.as_ref();
+                let object_store = INMEMORY_STORE.clone();
+                let path = Path::parse(&table_name).unwrap();
+                let payload = PutPayload::from_bytes(bytes.clone());
+                object_store.put(&path, payload).await.unwrap();
+                let meta = object_store
+                    .head(&Path::parse(&table_name).unwrap())
+                    .await
+                    .unwrap();
+                let mut reader = ParquetObjectReader::new(object_store, meta);
+                let metadata = reader.get_metadata().await.unwrap();
+                ctx.register_parquet(
+                    &table_name,
+                    &format!("mem:///{}", table_name),
+                    Default::default(),
+                )
+                .await
+                .unwrap();
+                set_parquet_table.set(Some(ParquetTable {
+                    reader,
+                    table_name,
+                    metadata,
+                }));
                 set_is_folded.set(true);
             });
         }) as Box<dyn FnMut(_)>);
@@ -187,14 +198,14 @@ pub fn FileReader(
         let url_str = url.get();
         set_error_message.set(None);
 
-        let Ok(url) = Url::new(&url_str) else {
+        let Ok(url) = ObjectStoreUrl::parse(&url_str) else {
             set_error_message.set(Some(format!("Invalid URL: {}", url_str)));
             return;
         };
-        // NOTE: protocol will include `:`, for example: `https:`
-        let endpoint = format!("{}//{}", url.protocol(), url.host());
-        // We don't support query so far.
-        let path = url.pathname();
+
+        let url_ref: &Url = url.as_ref();
+        let endpoint = format!("{}://{}", url_ref.scheme(), url_ref.host_str().unwrap());
+        let path = url_ref.path();
 
         let table_name = path
             .split('/')
@@ -209,20 +220,27 @@ pub fn FileReader(
                 return;
             };
             let op = op.finish();
+            let object_store = Arc::new(OpendalStore::new(op));
+            let meta = object_store
+                .head(&Path::parse(&table_name).unwrap())
+                .await
+                .unwrap();
+            let mut reader = ParquetObjectReader::new(object_store.clone(), meta);
+            let metadata = reader.get_metadata().await.unwrap();
+            let object_store_url = ObjectStoreUrl::parse(&endpoint).unwrap();
+            let ctx = SESSION_CTX.as_ref();
+            ctx.register_object_store(object_store_url.as_ref(), object_store)
+                .unwrap();
+            ctx.register_parquet(&table_name, &url_str, Default::default())
+                .await
+                .unwrap();
 
-            match op.read(&path).await {
-                Ok(bs) => {
-                    let parquet_table = ParquetTable {
-                        bytes: bs.to_bytes(),
-                        table_name,
-                    };
-                    update_file(parquet_table, set_parquet_table).await;
-                    set_is_folded.set(true);
-                }
-                Err(e) => {
-                    set_error_message.set(Some(format!("Failed to read from HTTP: {}", e)));
-                }
-            }
+            set_parquet_table.set(Some(ParquetTable {
+                reader,
+                table_name,
+                metadata,
+            }));
+            set_is_folded.set(true);
         });
     };
 
@@ -255,27 +273,31 @@ pub fn FileReader(
                 .bucket(&bucket)
                 .region(&region);
 
-            match Operator::new(cfg) {
-                Ok(op) => {
-                    let operator = op.finish();
-                    match operator.read(&s3_file_path.get()).await {
-                        Ok(bs) => {
-                            let parquet_table = ParquetTable {
-                                bytes: bs.to_bytes(),
-                                table_name: file_name,
-                            };
-                            update_file(parquet_table, set_parquet_table).await;
-                            set_is_folded.set(true);
-                        }
-                        Err(e) => {
-                            set_error_message.set(Some(format!("Failed to read from S3: {}", e)));
-                        }
-                    }
-                }
-                Err(e) => {
-                    set_error_message.set(Some(format!("Failed to create S3 operator: {}", e)));
-                }
-            }
+            let path = format!("s3://{}/{}/{}", endpoint, region, bucket);
+            let table_path = format!("{}/{}", path, file_name);
+
+            let op = Operator::new(cfg).unwrap().finish();
+            let object_store = Arc::new(OpendalStore::new(op));
+            let meta = object_store
+                .head(&Path::parse(&table_path).unwrap())
+                .await
+                .unwrap();
+            let mut reader = ParquetObjectReader::new(object_store.clone(), meta);
+            let metadata = reader.get_metadata().await.unwrap();
+            let object_store_url = Url::parse(&path).unwrap();
+            let ctx = SESSION_CTX.as_ref();
+            ctx.register_object_store(&object_store_url, object_store)
+                .unwrap();
+            ctx.register_parquet(&file_name, &table_path, Default::default())
+                .await
+                .unwrap();
+
+            set_parquet_table.set(Some(ParquetTable {
+                reader,
+                table_name: file_name,
+                metadata,
+            }));
+            set_is_folded.set(true);
         });
     };
 
