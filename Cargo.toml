@@ -37,16 +37,20 @@ futures = "0.3.31"
 zstd = { version = "*", features = ["wasm", "thin"], default-features = false }
 zstd-sys = { version = "=2.0.9", default-features = false }
 serde = { version = "1.0" }
-opendal = { version = "0.51.0", default-features = false, features = [
+
+# Use our fork until https://github.com/apache/opendal/pull/5530
+opendal = { git = "https://github.com/XiangpengHao/opendal.git", default-features = false, features = [
 	"services-s3",
 	"services-http",
 ] }
-# object_store_opendal = { path = "../opendal/integrations/object_store", features = [
-# 	"send_wrapper",
-# ] }
+object_store_opendal = { git = "https://github.com/XiangpengHao/opendal.git", features = [
+	"send_wrapper",
+] }
+
 leptos_router = { version = "0.7.0", features = ["nightly"] }
 object_store = "0.11.1"
 async-trait = "0.1.83"
+url = "2.5.4"
 
 [profile.release]
 strip = true

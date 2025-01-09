@@ -44,6 +44,7 @@ pub(crate) static INMEMORY_STORE: LazyLock<Arc<InMemory>> =
 pub(crate) static SESSION_CTX: LazyLock<Arc<SessionContext>> = LazyLock::new(|| {
     let mut config = SessionConfig::new();
     config.options_mut().sql_parser.dialect = "PostgreSQL".to_string();
+    config.options_mut().execution.parquet.pushdown_filters = true;
     let ctx = Arc::new(SessionContext::new_with_config(config));
     let object_store_url = ObjectStoreUrl::parse("mem://").unwrap();
     let object_store = INMEMORY_STORE.clone();

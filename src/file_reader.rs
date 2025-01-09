@@ -1,12 +1,16 @@
-use bytes::Bytes;
+use std::sync::Arc;
+
+use datafusion::execution::object_store::ObjectStoreUrl;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::{prelude::Closure, JsCast};
 use leptos_router::hooks::query_signal;
 use object_store::path::Path;
 use object_store::{ObjectStore, PutPayload};
+use object_store_opendal::OpendalStore;
 use opendal::{services::Http, services::S3, Operator};
 use parquet::arrow::async_reader::{AsyncFileReader, ParquetObjectReader};
-use web_sys::{js_sys, Url};
+use url::Url;
+use web_sys::js_sys;
 
 use crate::{ParquetTable, INMEMORY_STORE, SESSION_CTX};
 
@@ -34,48 +38,21 @@ fn save_to_storage(key: &str, value: &str) {
     }
 }
 
-async fn update_file(
-    bytes: Bytes,
-    table_name: &str,
-    parquet_table_setter: WriteSignal<Option<ParquetTable>>,
-) {
-    let ctx = SESSION_CTX.as_ref();
-    let object_store = INMEMORY_STORE.clone();
-    let path = Path::parse(table_name).unwrap();
-    let payload = PutPayload::from_bytes(bytes);
-    object_store.put(&path, payload).await.unwrap();
-
-    let meta = object_store.head(&path).await.unwrap();
-    let mut reader = ParquetObjectReader::new(object_store, meta);
-    let metadata = reader.get_metadata().await.unwrap();
-
-    ctx.register_parquet(
-        table_name,
-        &format!("mem:///{}", table_name),
-        Default::default(),
-    )
-    .await
-    .unwrap();
-    parquet_table_setter.set(Some(ParquetTable {
-        reader,
-        metadata,
-        table_name: table_name.to_string(),
-    }));
-}
+const DEFAULT_URL: &str = "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet";
 
 #[component]
 pub fn FileReader(
     set_error_message: WriteSignal<Option<String>>,
     set_parquet_table: WriteSignal<Option<ParquetTable>>,
 ) -> impl IntoView {
-    let (active_tab, set_active_tab) = query_signal::<String>("tab");
+    let (active_tab, set_active_tab) = signal("url".to_string());
 
     let (url_query, set_url_query) = query_signal::<String>("url");
     let default_url = {
         if let Some(url) = url_query.get() {
             url
         } else {
-            "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet".to_string()
+            DEFAULT_URL.to_string()
         }
     };
     let (url, set_url) = signal(default_url);
@@ -86,83 +63,29 @@ pub fn FileReader(
     ));
     let (s3_access_key_id, _) = signal(get_stored_value(S3_ACCESS_KEY_ID_KEY, ""));
     let (s3_secret_key, _) = signal(get_stored_value(S3_SECRET_KEY_KEY, ""));
-
-    let (s3_bucket_query, set_s3_bucket_query) = query_signal::<String>("bucket");
-    let default_bucket = {
-        if let Some(bucket) = s3_bucket_query.get() {
-            bucket
-        } else {
-            get_stored_value(S3_BUCKET_KEY, "")
-        }
-    };
-    let (s3_bucket, set_s3_bucket) = signal(default_bucket);
-
-    let (s3_region_query, set_s3_region_query) = query_signal::<String>("region");
-    let default_region = {
-        if let Some(region) = s3_region_query.get() {
-            region
-        } else {
-            get_stored_value(S3_REGION_KEY, "us-east-1")
-        }
-    };
-    let (s3_region, set_s3_region) = signal(default_region);
-
-    let (s3_file_path_query, set_s3_file_path_query) = query_signal::<String>("file_path");
-    let default_file_path = {
-        if let Some(file_path) = s3_file_path_query.get() {
-            file_path
-        } else {
-            get_stored_value(S3_FILE_PATH_KEY, "")
-        }
-    };
-    let (s3_file_path, set_s3_file_path) = signal(default_file_path);
+    let (s3_bucket, set_s3_bucket) = signal(get_stored_value(S3_BUCKET_KEY, ""));
+    let (s3_region, set_s3_region) = signal(get_stored_value(S3_REGION_KEY, "us-east-1"));
+    let (s3_file_path, set_s3_file_path) = signal(get_stored_value(S3_FILE_PATH_KEY, ""));
 
     let (is_folded, set_is_folded) = signal(false);
-
-    Effect::watch(
-        url,
-        move |url, _, _| {
-            let Some(active_tab) = active_tab.get() else {
-                return;
-            };
-            if active_tab == "url" {
-                set_url_query.set(Some(url.clone()));
-            }
-        },
-        true,
-    );
 
     let set_active_tab_fn = move |tab: &str| {
         match tab {
             "file" => {
                 set_url_query.set(None);
-                set_s3_bucket_query.set(None);
-                set_s3_region_query.set(None);
-                set_s3_file_path_query.set(None);
             }
             "url" => {
                 set_url_query.set(Some(url.get()));
-                set_s3_bucket_query.set(None);
-                set_s3_region_query.set(None);
-                set_s3_file_path_query.set(None);
             }
             "s3" => {
                 set_url_query.set(None);
-                set_s3_bucket_query.set(Some(s3_bucket.get()));
-                set_s3_region_query.set(Some(s3_region.get()));
-                set_s3_file_path_query.set(Some(s3_file_path.get()));
             }
             _ => {}
         }
-        if let Some(active_t) = active_tab.get() {
-            if active_t == tab {
-                set_is_folded.set(!is_folded.get());
-            } else {
-                set_active_tab.set(Some(tab.to_string()));
-                set_is_folded.set(false);
-            }
+        if active_tab.get() == tab {
+            set_is_folded.set(!is_folded.get());
         } else {
-            set_active_tab.set(Some(tab.to_string()));
+            set_active_tab.set(tab.to_string());
             set_is_folded.set(false);
         }
     };
@@ -184,7 +107,29 @@ pub fn FileReader(
             let uint8_array = js_sys::Uint8Array::new(&array_buffer);
             let bytes = bytes::Bytes::from(uint8_array.to_vec());
             leptos::task::spawn_local(async move {
-                update_file(bytes, &table_name, set_parquet_table).await;
+                let ctx = SESSION_CTX.as_ref();
+                let object_store = INMEMORY_STORE.clone();
+                let path = Path::parse(&table_name).unwrap();
+                let payload = PutPayload::from_bytes(bytes.clone());
+                object_store.put(&path, payload).await.unwrap();
+                let meta = object_store
+                    .head(&Path::parse(&table_name).unwrap())
+                    .await
+                    .unwrap();
+                let mut reader = ParquetObjectReader::new(object_store, meta);
+                let metadata = reader.get_metadata().await.unwrap();
+                ctx.register_parquet(
+                    &table_name,
+                    &format!("mem:///{}", table_name),
+                    Default::default(),
+                )
+                .await
+                .unwrap();
+                set_parquet_table.set(Some(ParquetTable {
+                    reader,
+                    table_name,
+                    metadata,
+                }));
                 set_is_folded.set(true);
             });
         }) as Box<dyn FnMut(_)>);
@@ -196,16 +141,15 @@ pub fn FileReader(
 
     let on_url_submit = move || {
         let url_str = url.get();
+        set_url_query.set(Some(url_str.clone()));
         set_error_message.set(None);
 
-        let Ok(url) = Url::new(&url_str) else {
+        let Ok(url) = Url::parse(&url_str) else {
             set_error_message.set(Some(format!("Invalid URL: {}", url_str)));
             return;
         };
-        // NOTE: protocol will include `:`, for example: `https:`
-        let endpoint = format!("{}//{}", url.protocol(), url.host());
-        // We don't support query so far.
-        let path = url.pathname();
+        let endpoint = format!("{}://{}", url.scheme(), url.host_str().unwrap());
+        let path = url.path().to_string();
 
         let table_name = path
             .split('/')
@@ -220,16 +164,26 @@ pub fn FileReader(
                 return;
             };
             let op = op.finish();
+            let object_store = Arc::new(OpendalStore::new(op));
+            let meta = object_store
+                .head(&Path::parse(&path).unwrap())
+                .await
+                .unwrap();
+            let mut reader = ParquetObjectReader::new(object_store.clone(), meta);
+            let metadata = reader.get_metadata().await.unwrap();
+            let object_store_url = ObjectStoreUrl::parse(&endpoint).unwrap();
+            let ctx = SESSION_CTX.as_ref();
+            ctx.register_object_store(object_store_url.as_ref(), object_store);
+            ctx.register_parquet(&table_name, &url_str, Default::default())
+                .await
+                .unwrap();
 
-            match op.read(&path).await {
-                Ok(bs) => {
-                    update_file(bs.to_bytes(), &table_name, set_parquet_table).await;
-                    set_is_folded.set(true);
-                }
-                Err(e) => {
-                    set_error_message.set(Some(format!("Failed to read from HTTP: {}", e)));
-                }
-            }
+            set_parquet_table.set(Some(ParquetTable {
+                reader,
+                table_name,
+                metadata,
+            }));
+            set_is_folded.set(true);
         });
     };
 
@@ -262,33 +216,40 @@ pub fn FileReader(
                 .bucket(&bucket)
                 .region(&region);
 
-            match Operator::new(cfg) {
-                Ok(op) => {
-                    let operator = op.finish();
-                    match operator.read(&s3_file_path.get()).await {
-                        Ok(bs) => {
-                            update_file(bs.to_bytes(), &file_name, set_parquet_table).await;
-                            set_is_folded.set(true);
-                        }
-                        Err(e) => {
-                            set_error_message.set(Some(format!("Failed to read from S3: {}", e)));
-                        }
-                    }
-                }
-                Err(e) => {
-                    set_error_message.set(Some(format!("Failed to create S3 operator: {}", e)));
-                }
-            }
+            let path = format!("s3://{}", bucket);
+            let table_path = format!("{}/{}", path, file_name);
+
+            let op = Operator::new(cfg).unwrap().finish();
+            let object_store = Arc::new(OpendalStore::new(op));
+            let meta = object_store
+                .head(&Path::parse(&file_name).unwrap())
+                .await
+                .unwrap();
+            let mut reader = ParquetObjectReader::new(object_store.clone(), meta);
+            let metadata = reader.get_metadata().await.unwrap();
+            let object_store_url = Url::parse(&path).unwrap();
+            let ctx = SESSION_CTX.as_ref();
+            ctx.register_object_store(&object_store_url, object_store);
+            ctx.register_parquet(&file_name, &table_path, Default::default())
+                .await
+                .unwrap();
+
+            set_parquet_table.set(Some(ParquetTable {
+                reader,
+                table_name: file_name,
+                metadata,
+            }));
+            set_is_folded.set(true);
         });
     };
 
-    match active_tab.get() {
-        Some(tab) => match tab.as_str() {
-            "url" => on_url_submit(),
-            "s3" => on_s3_submit(),
-            _ => {}
-        },
-        None => set_active_tab_fn("file"),
+    match url_query.get() {
+        Some(url) => {
+            // user provided an url, set it and run it.
+            set_url.set(url);
+            on_url_submit();
+        }
+        None => set_url.set(DEFAULT_URL.to_string()),
     }
 
     let on_s3_bucket_change = move |ev| {
@@ -316,10 +277,8 @@ pub fn FileReader(
                     <button
                         class=move || {
                             let base = "py-2 px-1 border-b-2 font-medium text-sm";
-                            if let Some(active_t) = active_tab.get() {
-                                if active_t == "file" {
-                                    return format!("{} border-green-500 text-green-600", base);
-                                }
+                            if active_tab.get() == "file" {
+                                return format!("{} border-green-500 text-green-600", base);
                             }
                             format!(
                                 "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
@@ -333,10 +292,8 @@ pub fn FileReader(
                     <button
                         class=move || {
                             let base = "py-2 px-1 border-b-2 font-medium text-sm";
-                            if let Some(active_t) = active_tab.get() {
-                                if active_t == "url" {
-                                    return format!("{} border-green-500 text-green-600", base);
-                                }
+                            if active_tab.get() == "url" {
+                                return format!("{} border-green-500 text-green-600", base);
                             }
                             format!(
                                 "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
@@ -350,10 +307,8 @@ pub fn FileReader(
                     <button
                         class=move || {
                             let base = "py-2 px-1 border-b-2 font-medium text-sm";
-                            if let Some(active_t) = active_tab.get() {
-                                if active_t == "s3" {
-                                    return format!("{} border-green-500 text-green-600", base);
-                                }
+                            if active_tab.get() == "s3" {
+                                return format!("{} border-green-500 text-green-600", base);
                             }
                             format!(
                                 "{} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
@@ -373,11 +328,7 @@ pub fn FileReader(
                 } else {
                     "max-h-[500px] overflow-hidden transition-all duration-300 ease-in-out p-6"
                 };
-                let active_tab = active_tab.get();
-                let Some(active_tab) = active_tab else {
-                    return ().into_any();
-                };
-                match active_tab.as_str() {
+                match active_tab.get().as_str() {
                     "file" => {
 
                         view! {

@@ -9,27 +9,18 @@ Online at: https://parquet-viewer.xiangpeng.systems
 - View Parquet metadata ✅
 - View Parquet files from anywhere -- local file, S3, or any URLs ✅
 - Everything runs in the browser, no server, no external dependencies, just a web page ✅
+- Read only you query -- won't download the entire parquet file ✅
 
 ### Demo
 
 ![screenshot](doc/parquet-viewer.gif)
 
-### Headless mode
-Despite being a battery-included web app, it can also be used as a headless tool, especially helpful when working with LLM tools.
+### Tips 
 
-Like command args for CLI tools, you can pass url params to control the behavior of the app.
+- You can use `?url=` to load a file from a url.
+For example, [`parquet-viewer.xiangpeng.systems/?url=https://raw.githubusercontent.com/tobilg/public-cloud-provider-ip-ranges/main/data/providers/all.parquet`](https://parquet-viewer.xiangpeng.systems/?url=https://raw.githubusercontent.com/tobilg/public-cloud-provider-ip-ranges/main/data/providers/all.parquet) will load the file from github.
+`parquet-viewer` is smart enough to only download the data that is relevant to your query, usually a few KBs, even if the file is large.
 
-For example, [this link](https://parquet-viewer.xiangpeng.systems/?tab=url&url=https%3A%2F%2Fraw.githubusercontent.com%2Ftobilg%2Fpublic-cloud-provider-ip-ranges%2Fmain%2Fdata%2Fproviders%2Fall.parquet&query=SELECT%20%22cloud_provider%22%2C%20%22region%22%2C%20SUM(%22ip_address_cnt%22)%20AS%20%22ip_count%22%20FROM%20%22all%22%20GROUP%20BY%20%22cloud_provider%22%2C%20%22region%22%20ORDER%20BY%20%22ip_count%22%20DESC%3B&export=csv) tells parquet-viewer to 
-
-(1) load a file from a url, 
-
-(2) run a SQL query (or natural language if you like), 
-
-(3) export the results to a CSV file. 
-
-Most of the query params are reflected in the URL as you operate on the app, so you can simply share the URL with others to reproduce your findings.
-
-Adding `export=csv` or `export=parquet` to the URL will export the query result to a CSV/Parquet file.
 
 
 ## Development
