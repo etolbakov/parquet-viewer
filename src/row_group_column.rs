@@ -186,7 +186,7 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
     Effect::watch(
         column_byte_range,
         move |byte_range, _, _| {
-            let byte_range = byte_range.clone();
+            let byte_range = *byte_range;
             let metadata = metadata.clone();
             let mut reader = reader.clone();
             leptos::task::spawn_local(async move {
