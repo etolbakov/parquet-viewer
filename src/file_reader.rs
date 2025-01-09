@@ -116,7 +116,9 @@ pub fn FileReader(
                     .head(&Path::parse(&table_name).unwrap())
                     .await
                     .unwrap();
-                let mut reader = ParquetObjectReader::new(object_store, meta);
+                let mut reader = ParquetObjectReader::new(object_store, meta)
+                    .with_preload_column_index(true)
+                    .with_preload_offset_index(true);
                 let metadata = reader.get_metadata().await.unwrap();
                 ctx.register_parquet(
                     &table_name,
@@ -148,7 +150,12 @@ pub fn FileReader(
             set_error_message.set(Some(format!("Invalid URL: {}", url_str)));
             return;
         };
-        let endpoint = format!("{}://{}", url.scheme(), url.host_str().unwrap());
+        let endpoint = format!(
+            "{}://{}{}",
+            url.scheme(),
+            url.host_str().unwrap(),
+            url.port().map_or("".to_string(), |p| format!(":{}", p))
+        );
         let path = url.path().to_string();
 
         let table_name = path
@@ -169,7 +176,9 @@ pub fn FileReader(
                 .head(&Path::parse(&path).unwrap())
                 .await
                 .unwrap();
-            let mut reader = ParquetObjectReader::new(object_store.clone(), meta);
+            let mut reader = ParquetObjectReader::new(object_store.clone(), meta)
+                .with_preload_column_index(true)
+                .with_preload_offset_index(true);
             let metadata = reader.get_metadata().await.unwrap();
             let object_store_url = ObjectStoreUrl::parse(&endpoint).unwrap();
             let ctx = SESSION_CTX.as_ref();
@@ -225,7 +234,9 @@ pub fn FileReader(
                 .head(&Path::parse(&file_name).unwrap())
                 .await
                 .unwrap();
-            let mut reader = ParquetObjectReader::new(object_store.clone(), meta);
+            let mut reader = ParquetObjectReader::new(object_store.clone(), meta)
+                .with_preload_column_index(true)
+                .with_preload_offset_index(true);
             let metadata = reader.get_metadata().await.unwrap();
             let object_store_url = Url::parse(&path).unwrap();
             let ctx = SESSION_CTX.as_ref();
