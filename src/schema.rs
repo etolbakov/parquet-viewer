@@ -21,7 +21,7 @@ enum SortField {
 }
 
 #[component]
-pub fn SchemaSection(parquet_info: super::ParquetInfo) -> impl IntoView {
+pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
     let schema = parquet_info.schema.clone();
     let metadata = parquet_info.metadata.clone();
     let mut column_info = vec![

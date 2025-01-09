@@ -29,26 +29,27 @@ web-sys = { version = "0.3.72", features = [
 	"File",
 	"Storage",
 	"Window",
+	"Navigator",
+	"Clipboard",
 ] }
 chrono = { version = "0.4", features = ["wasmbind"] }
 futures = "0.3.31"
 zstd = { version = "*", features = ["wasm", "thin"], default-features = false }
 zstd-sys = { version = "=2.0.9", default-features = false }
-serde = { version = "1.0", features = ["derive"] }
-opendal = { version = "0.50.2", default-features = false, features = [
+serde = { version = "1.0" }
+opendal = { version = "0.51.0", default-features = false, features = [
 	"services-s3",
 	"services-http",
 ] }
-leptos-use = { version = "0.14.0", features = [
-	"use_websocket",
-] }
-codee = { version = "0.2", features = ["msgpack_serde"] }
+# object_store_opendal = { path = "../opendal/integrations/object_store", features = [
+# 	"send_wrapper",
+# ] }
 leptos_router = { version = "0.7.0", features = ["nightly"] }
 object_store = "0.11.1"
 async-trait = "0.1.83"
 
 [profile.release]
 strip = true
-opt-level = "z"
+opt-level = "s"
 # lto = true
 panic = "abort"

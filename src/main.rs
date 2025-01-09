@@ -25,12 +25,11 @@ use metadata::MetadataSection;
 use std::{sync::Arc, sync::LazyLock};
 
 use arrow::datatypes::SchemaRef;
-use bytes::Bytes;
 use leptos::{logging, prelude::*};
 use parquet::{
-    arrow::parquet_to_arrow_schema,
+    arrow::{async_reader::ParquetObjectReader, parquet_to_arrow_schema},
     errors::ParquetError,
-    file::metadata::{ParquetMetaData, ParquetMetaDataReader},
+    file::metadata::ParquetMetaData,
 };
 
 mod query_input;
@@ -55,37 +54,24 @@ pub(crate) static SESSION_CTX: LazyLock<Arc<SessionContext>> = LazyLock::new(|| 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ParquetReader {
     parquet_table: ParquetTable,
-    parquet_info: ParquetInfo,
+    display_info: DisplayInfo,
 }
 
 impl ParquetReader {
     pub fn new(table: ParquetTable) -> Result<Self> {
-        let mut footer = [0_u8; 8];
-        let bytes = &table.bytes;
-        footer.copy_from_slice(&bytes[bytes.len() - 8..]);
-        let metadata_len = ParquetMetaDataReader::decode_footer(&footer)?;
+        let metadata = table.metadata.clone();
+        let size = metadata.memory_size();
 
-        let mut metadata_reader = ParquetMetaDataReader::new()
-            .with_page_indexes(true)
-            .with_column_indexes(true)
-            .with_offset_indexes(true);
-        metadata_reader.try_parse(bytes)?;
-        let metadata = metadata_reader.finish()?;
-
-        let parquet_info = ParquetInfo::from_metadata(metadata, metadata_len as u64)?;
+        let parquet_info = DisplayInfo::from_metadata(metadata, size as u64)?;
 
         Ok(Self {
             parquet_table: table,
-            parquet_info,
+            display_info: parquet_info,
         })
     }
 
-    fn info(&self) -> &ParquetInfo {
-        &self.parquet_info
-    }
-
-    fn bytes(&self) -> &Bytes {
-        &self.parquet_table.bytes
+    fn info(&self) -> &DisplayInfo {
+        &self.display_info
     }
 
     fn table_name(&self) -> &str {
@@ -94,7 +80,7 @@ impl ParquetReader {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct ParquetInfo {
+struct DisplayInfo {
     file_size: u64,
     uncompressed_size: u64,
     compression_ratio: f64,
@@ -110,8 +96,11 @@ struct ParquetInfo {
     metadata_len: u64,
 }
 
-impl ParquetInfo {
-    fn from_metadata(metadata: ParquetMetaData, metadata_len: u64) -> Result<Self, ParquetError> {
+impl DisplayInfo {
+    fn from_metadata(
+        metadata: Arc<ParquetMetaData>,
+        metadata_len: u64,
+    ) -> Result<Self, ParquetError> {
         let compressed_size = metadata
             .row_groups()
             .iter()
@@ -155,7 +144,7 @@ impl ParquetInfo {
                 .map(|c| c.bloom_filter_offset().is_some())
                 .unwrap_or(false),
             schema: Arc::new(schema),
-            metadata: Arc::new(metadata),
+            metadata,
             metadata_len,
         })
     }
@@ -171,7 +160,7 @@ fn format_rows(rows: u64) -> String {
     result
 }
 
-impl std::fmt::Display for ParquetInfo {
+impl std::fmt::Display for DisplayInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -214,10 +203,17 @@ async fn execute_query_async(
     Ok((results, physical_plan))
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 struct ParquetTable {
-    bytes: Bytes,
+    reader: ParquetObjectReader,
+    metadata: Arc<ParquetMetaData>,
     table_name: String,
+}
+
+impl PartialEq for ParquetTable {
+    fn eq(&self, other: &Self) -> bool {
+        self.table_name == other.table_name
+    }
 }
 
 #[component]
