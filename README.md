@@ -21,6 +21,11 @@ Online at: https://parquet-viewer.xiangpeng.systems
 For example, [`parquet-viewer.xiangpeng.systems/?url=https://raw.githubusercontent.com/tobilg/public-cloud-provider-ip-ranges/main/data/providers/all.parquet`](https://parquet-viewer.xiangpeng.systems/?url=https://raw.githubusercontent.com/tobilg/public-cloud-provider-ip-ranges/main/data/providers/all.parquet) will load the file from github.
 `parquet-viewer` is smart enough to only download the data that is relevant to your query, usually a few KBs, even if the file is large.
 
+- You can use `parquet-viewer.py` in `utils` to open a local file. Only works on Chrome or Firefox (not Safari).
+```bash
+./parquet-viewer.py /path/to/your/file.parquet
+```
+
 
 
 ## Development

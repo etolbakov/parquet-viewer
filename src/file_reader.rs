@@ -1,9 +1,10 @@
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use datafusion::execution::object_store::ObjectStoreUrl;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::{prelude::Closure, JsCast};
 use leptos_router::hooks::query_signal;
+use object_store::memory::InMemory;
 use object_store::path::Path;
 use object_store::{ObjectStore, PutPayload};
 use object_store_opendal::OpendalStore;
@@ -12,7 +13,10 @@ use parquet::arrow::async_reader::{AsyncFileReader, ParquetObjectReader};
 use url::Url;
 use web_sys::js_sys;
 
-use crate::{ParquetTable, INMEMORY_STORE, SESSION_CTX};
+use crate::{ParquetTable, SESSION_CTX};
+
+pub(crate) static INMEMORY_STORE: LazyLock<Arc<InMemory>> =
+    LazyLock::new(|| Arc::new(InMemory::new()));
 
 const S3_ENDPOINT_KEY: &str = "s3_endpoint";
 const S3_ACCESS_KEY_ID_KEY: &str = "s3_access_key_id";
@@ -45,7 +49,7 @@ pub fn FileReader(
     set_error_message: WriteSignal<Option<String>>,
     set_parquet_table: WriteSignal<Option<ParquetTable>>,
 ) -> impl IntoView {
-    let (active_tab, set_active_tab) = signal("url".to_string());
+    let (active_tab, set_active_tab) = signal("file".to_string());
 
     let (url_query, set_url_query) = query_signal::<String>("url");
     let default_url = {
@@ -258,6 +262,7 @@ pub fn FileReader(
         Some(url) => {
             // user provided an url, set it and run it.
             set_url.set(url);
+            set_active_tab.set("url".to_string());
             on_url_submit();
         }
         None => set_url.set(DEFAULT_URL.to_string()),

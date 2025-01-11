@@ -5,13 +5,12 @@ use datafusion::{
     physical_plan::ExecutionPlan,
     prelude::{SessionConfig, SessionContext},
 };
-use file_reader::FileReader;
+use file_reader::{FileReader, INMEMORY_STORE};
 use leptos_router::{
     components::Router,
     hooks::{query_signal, use_query_map},
 };
 
-use object_store::memory::InMemory;
 use query_results::{export_to_csv_inner, export_to_parquet_inner, QueryResult, QueryResultView};
 use schema::SchemaSection;
 
@@ -37,9 +36,6 @@ use query_input::{execute_query_inner, QueryInput};
 
 mod settings;
 use settings::Settings;
-
-pub(crate) static INMEMORY_STORE: LazyLock<Arc<InMemory>> =
-    LazyLock::new(|| Arc::new(InMemory::new()));
 
 pub(crate) static SESSION_CTX: LazyLock<Arc<SessionContext>> = LazyLock::new(|| {
     let mut config = SessionConfig::new();
