@@ -19,6 +19,7 @@ mod query_results;
 mod row_group_column;
 
 mod metadata;
+mod object_store_cache;
 use metadata::MetadataSection;
 
 use std::{sync::Arc, sync::LazyLock};

@@ -13,6 +13,7 @@ use parquet::arrow::async_reader::{AsyncFileReader, ParquetObjectReader};
 use url::Url;
 use web_sys::js_sys;
 
+use crate::object_store_cache::ObjectStoreCache;
 use crate::{ParquetTable, SESSION_CTX};
 
 pub(crate) static INMEMORY_STORE: LazyLock<Arc<InMemory>> =
@@ -175,7 +176,7 @@ pub fn FileReader(
                 return;
             };
             let op = op.finish();
-            let object_store = Arc::new(OpendalStore::new(op));
+            let object_store = Arc::new(ObjectStoreCache::new(OpendalStore::new(op)));
             let meta = object_store
                 .head(&Path::parse(&path).unwrap())
                 .await
@@ -233,7 +234,7 @@ pub fn FileReader(
             let table_path = format!("{}/{}", path, file_name);
 
             let op = Operator::new(cfg).unwrap().finish();
-            let object_store = Arc::new(OpendalStore::new(op));
+            let object_store = Arc::new(ObjectStoreCache::new(OpendalStore::new(op)));
             let meta = object_store
                 .head(&Path::parse(&file_name).unwrap())
                 .await

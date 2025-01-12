@@ -139,7 +139,7 @@ pub(crate) async fn user_input_to_sql(
     logging::log!("Processing user input: {}", input);
 
     let prompt = format!(
-        "Generate a SQL query to answer the following question: {}. You should generate PostgreSQL SQL dialect, all field names and table names should be double quoted, and the output SQL should be executable, be careful about the available columns. The table name is: {}, the schema of the table is: {}.  ",
+        "Generate a SQL query to answer the following question: {}. You should generate PostgreSQL SQL dialect, all field names and table names should be double quoted, and the output SQL should be executable, be careful about the available columns. The table name is: \"{}\" (without quotes), the schema of the table is: {}.  ",
         input, file_name, schema_str
     );
     logging::log!("{}", prompt);
