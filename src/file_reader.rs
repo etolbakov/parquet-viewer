@@ -1,6 +1,7 @@
 use std::sync::{Arc, LazyLock};
 
 use datafusion::execution::object_store::ObjectStoreUrl;
+use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::{prelude::Closure, JsCast};
 use leptos_router::hooks::query_signal;
@@ -188,6 +189,7 @@ pub fn FileReader(
             let object_store_url = ObjectStoreUrl::parse(&endpoint).unwrap();
             let ctx = SESSION_CTX.as_ref();
             ctx.register_object_store(object_store_url.as_ref(), object_store);
+            log!("table_name: {}, url_str: {}", table_name, url_str);
             ctx.register_parquet(&table_name, &url_str, Default::default())
                 .await
                 .unwrap();
@@ -231,12 +233,11 @@ pub fn FileReader(
                 .region(&region);
 
             let path = format!("s3://{}", bucket);
-            let table_path = format!("{}/{}", path, file_name);
 
             let op = Operator::new(cfg).unwrap().finish();
             let object_store = Arc::new(ObjectStoreCache::new(OpendalStore::new(op)));
             let meta = object_store
-                .head(&Path::parse(&file_name).unwrap())
+                .head(&Path::parse(&s3_file_path.get()).unwrap())
                 .await
                 .unwrap();
             let mut reader = ParquetObjectReader::new(object_store.clone(), meta)
@@ -246,9 +247,13 @@ pub fn FileReader(
             let object_store_url = Url::parse(&path).unwrap();
             let ctx = SESSION_CTX.as_ref();
             ctx.register_object_store(&object_store_url, object_store);
-            ctx.register_parquet(&file_name, &table_path, Default::default())
-                .await
-                .unwrap();
+            ctx.register_parquet(
+                &file_name,
+                &format!("s3://{}/{}", bucket, s3_file_path.get()),
+                Default::default(),
+            )
+            .await
+            .unwrap();
 
             set_parquet_table.set(Some(ParquetTable {
                 reader,
@@ -417,7 +422,7 @@ pub fn FileReader(
                                     class="space-y-4 w-full"
                                 >
                                     <div class="flex flex-wrap gap-4">
-                                        <div class="flex-1 min-w-[250px]">
+                                        <div class="flex-1 min-w-[200px] max-w-[200px]">
                                             <label class="block text-sm font-medium text-gray-700 mb-1">
                                                 "Bucket"
                                             </label>
@@ -428,7 +433,7 @@ pub fn FileReader(
                                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                                             />
                                         </div>
-                                        <div class="flex-1 min-w-[250px]">
+                                        <div class="flex-1 min-w-[150px] max-w-[150px]">
                                             <label class="block text-sm font-medium text-gray-700 mb-1">
                                                 "Region"
                                             </label>
@@ -439,7 +444,7 @@ pub fn FileReader(
                                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                                             />
                                         </div>
-                                        <div class="flex-1 min-w-[250px]">
+                                        <div class="flex-[2] min-w-[250px]">
                                             <label class="block text-sm font-medium text-gray-700 mb-1">
                                                 "File Path"
                                             </label>
@@ -450,12 +455,12 @@ pub fn FileReader(
                                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                                             />
                                         </div>
-                                        <div class="flex-1 min-w-[150px] max-w-[250px] self-end">
+                                        <div class="flex-1 min-w-[120px] max-w-[120px] self-end">
                                             <button
                                                 type="submit"
                                                 class="w-full px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
                                             >
-                                                "Read from S3"
+                                                "Read S3"
                                             </button>
                                         </div>
                                     </div>
