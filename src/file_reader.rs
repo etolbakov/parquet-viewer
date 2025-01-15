@@ -235,7 +235,7 @@ pub fn FileReader(
             let path = format!("s3://{}", bucket);
 
             let op = Operator::new(cfg).unwrap().finish();
-            let object_store = Arc::new(ObjectStoreCache::new(OpendalStore::new(op)));
+            let object_store = Arc::new(OpendalStore::new(op));
             let meta = object_store
                 .head(&Path::parse(&s3_file_path.get()).unwrap())
                 .await
@@ -244,9 +244,12 @@ pub fn FileReader(
                 .with_preload_column_index(true)
                 .with_preload_offset_index(true);
             let metadata = reader.get_metadata().await.unwrap();
-            let object_store_url = Url::parse(&path).unwrap();
+            let object_store_url = ObjectStoreUrl::parse(&path).unwrap();
             let ctx = SESSION_CTX.as_ref();
-            ctx.register_object_store(&object_store_url, object_store);
+            if ctx.runtime_env().object_store(&object_store_url).is_err() {
+                ctx.register_object_store(object_store_url.as_ref(), object_store);
+            }
+
             ctx.register_parquet(
                 &file_name,
                 &format!("s3://{}/{}", bucket, s3_file_path.get()),
