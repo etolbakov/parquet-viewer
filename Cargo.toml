@@ -39,11 +39,11 @@ zstd-sys = { version = "=2.0.9", default-features = false }
 serde = { version = "1.0" }
 
 # Use our fork until https://github.com/apache/opendal/pull/5530
-opendal = { git = "https://github.com/XiangpengHao/opendal.git", default-features = false, rev = "8b6ea6", features = [
+opendal = { git = "https://github.com/XiangpengHao/opendal.git", default-features = false, branch = "range-fix", features = [
 	"services-s3",
 	"services-http",
 ] }
-object_store_opendal = { git = "https://github.com/XiangpengHao/opendal.git", rev = "8b6ea6", features = [
+object_store_opendal = { git = "https://github.com/XiangpengHao/opendal.git", branch = "range-fix", features = [
 	"send_wrapper",
 ] }
 

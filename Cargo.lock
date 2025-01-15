@@ -2318,7 +2318,7 @@ dependencies = [
 [[package]]
 name = "object_store_opendal"
 version = "0.49.0"
-source = "git+https://github.com/XiangpengHao/opendal.git?rev=8b6ea6#8b6ea64843282c80cb623d3ec4467200c514c65e"
+source = "git+https://github.com/XiangpengHao/opendal.git?branch=range-fix#853be1d13e624d288d7da4262c20d7ad6a06516f"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2351,7 +2351,7 @@ checksum = "1261fe7e33c73b354eab43b1273a57c8f967d0391e80353e51f764ac02cf6775"
 [[package]]
 name = "opendal"
 version = "0.51.1"
-source = "git+https://github.com/XiangpengHao/opendal.git?rev=8b6ea6#8b6ea64843282c80cb623d3ec4467200c514c65e"
+source = "git+https://github.com/XiangpengHao/opendal.git?branch=range-fix#853be1d13e624d288d7da4262c20d7ad6a06516f"
 dependencies = [
  "anyhow",
  "async-trait",
