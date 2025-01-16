@@ -8,6 +8,7 @@ struct ColumnData {
     compressed_size: u64,
     uncompressed_size: u64,
     compression_ratio: f64,
+    null_count: i32,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -31,7 +32,8 @@ pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
             metadata
                 .row_groups()
                 .first()
-                .and_then(|rg| rg.columns().first().map(|c| c.compression()))
+                .and_then(|rg| rg.columns().first().map(|c| c.compression())),
+            0,
         );
         schema.fields.len()
     ];
@@ -40,6 +42,10 @@ pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
             column_info[i].0 += col.compressed_size() as u64;
             column_info[i].1 += col.uncompressed_size() as u64;
             column_info[i].2 = Some(col.compression());
+            column_info[i].3 = match col.statistics() {
+                None => 0,
+                Some(statistics) => statistics.null_count_opt().unwrap_or(0),
+            }
         }
     }
 
@@ -55,6 +61,7 @@ pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
             .map(|(i, field)| {
                 let compressed = column_info[i].0;
                 let uncompressed = column_info[i].1;
+                let null_count = column_info[i].3 as i32;
                 ColumnData {
                     id: i,
                     name: field.name().to_string(),
@@ -66,6 +73,7 @@ pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
                     } else {
                         0.0
                     },
+                    null_count,
                 }
             })
             .collect();
@@ -155,6 +163,12 @@ pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
                         >
                             "Ratio"
                         </th>
+                        <th
+                            class="px-4 py-2 cursor-pointer hover:bg-gray-100 text-left"
+                            on:click=move |_| sort_by(SortField::CompressionRatio)
+                        >
+                            "Null Count"
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -177,6 +191,7 @@ pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
                                         <td class="px-4 py-2 text-gray-500">
                                             {format!("{:.2}%", col.compression_ratio * 100.0)}
                                         </td>
+                                        <td class="px-4 py-2 text-gray-500">{col.null_count}</td>
                                     </tr>
                                 }
                             })
