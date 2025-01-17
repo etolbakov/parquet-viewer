@@ -5,7 +5,7 @@ use datafusion::{
     physical_plan::ExecutionPlan,
     prelude::{SessionConfig, SessionContext},
 };
-use file_reader::{FileReader, INMEMORY_STORE};
+use parquet_reader::{ParquetReader, INMEMORY_STORE};
 use leptos_router::{
     components::Router,
     hooks::{query_signal, use_query_map},
@@ -14,7 +14,7 @@ use leptos_router::{
 use query_results::{export_to_csv_inner, export_to_parquet_inner, QueryResult, QueryResultView};
 use schema::SchemaSection;
 
-mod file_reader;
+mod parquet_reader;
 mod query_results;
 mod row_group_column;
 
@@ -394,7 +394,7 @@ fn App() -> impl IntoView {
                 </div>
             </h1>
             <div class="space-y-6">
-                <FileReader
+                <ParquetReader
                     set_error_message=set_error_message
                     set_parquet_table=set_parquet_table
                 />
