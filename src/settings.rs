@@ -77,7 +77,7 @@ pub fn Settings(show: ReadSignal<bool>, set_show: WriteSignal<bool>) -> impl Int
                         <h3 class="text-lg font-medium mb-4">"LLM Configuration"</h3>
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-1">
-                                "Anthropic API Key"
+                                "Claude API Key" <a href="https://console.anthropic.com/account/keys" target="_blank" class="text-blue-500 hover:text-blue-700 ml-1">"(get key)"</a>
                             </label>
                             <input
                                 type="password"

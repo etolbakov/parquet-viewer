@@ -341,12 +341,6 @@ fn S3Reader(
     set_error_message: WriteSignal<Option<String>>,
     set_parquet_table: WriteSignal<Option<ParquetTable>>,
 ) -> impl IntoView {
-    let (s3_endpoint, _) = signal(get_stored_value(
-        S3_ENDPOINT_KEY,
-        "https://s3.amazonaws.com",
-    ));
-    let (s3_access_key_id, _) = signal(get_stored_value(S3_ACCESS_KEY_ID_KEY, ""));
-    let (s3_secret_key, _) = signal(get_stored_value(S3_SECRET_KEY_KEY, ""));
     let (s3_bucket, set_s3_bucket) = signal(get_stored_value(S3_BUCKET_KEY, ""));
     let (s3_region, set_s3_region) = signal(get_stored_value(S3_REGION_KEY, "us-east-1"));
     let (s3_file_path, set_s3_file_path) = signal(get_stored_value(S3_FILE_PATH_KEY, ""));
@@ -372,9 +366,10 @@ fn S3Reader(
     let on_s3_submit = move || {
         set_error_message.set(None);
 
-        let endpoint = s3_endpoint.get();
-        let access_key_id = s3_access_key_id.get();
-        let secret_key = s3_secret_key.get();
+        let endpoint = get_stored_value(S3_ENDPOINT_KEY, "https://s3.amazonaws.com");
+        let access_key_id = get_stored_value(S3_ACCESS_KEY_ID_KEY, "");
+        let secret_key = get_stored_value(S3_SECRET_KEY_KEY, "");
+
         let bucket = s3_bucket.get();
         let region = s3_region.get();
 
@@ -412,9 +407,7 @@ fn S3Reader(
             let metadata = reader.get_metadata().await.unwrap();
             let object_store_url = ObjectStoreUrl::parse(&path).unwrap();
             let ctx = SESSION_CTX.as_ref();
-            if ctx.runtime_env().object_store(&object_store_url).is_err() {
-                ctx.register_object_store(object_store_url.as_ref(), object_store);
-            }
+            ctx.register_object_store(object_store_url.as_ref(), object_store);
 
             ctx.register_parquet(
                 &file_name,

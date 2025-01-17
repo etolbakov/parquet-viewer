@@ -5,11 +5,11 @@ use datafusion::{
     physical_plan::ExecutionPlan,
     prelude::{SessionConfig, SessionContext},
 };
-use parquet_reader::{ParquetReader, INMEMORY_STORE};
 use leptos_router::{
     components::Router,
     hooks::{query_signal, use_query_map},
 };
+use parquet_reader::{ParquetReader, INMEMORY_STORE};
 
 use query_results::{export_to_csv_inner, export_to_parquet_inner, QueryResult, QueryResultView};
 use schema::SchemaSection;
@@ -410,7 +410,7 @@ fn App() -> impl IntoView {
                                         "Tips:" <ul class="list-disc ml-6 mt-2 space-y-1">
                                             <li>"Make sure the URL has CORS enabled."</li>
                                             <li>
-                                                "If query with natural language, make sure to set the Anthropic API key."
+                                                "If query with natural language, make sure to set the Claude API key."
                                             </li>
                                             <li>
                                                 "I usually download the file and use the file picker above."
