@@ -421,6 +421,9 @@ fn App() -> impl IntoView {
                             }
                         })
                 }}
+
+                <div class="border-t border-gray-300 my-4"></div>
+
                 <div class="mt-4">
                     {move || {
                         parquet_table
