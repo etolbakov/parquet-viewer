@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 #[component]
-pub fn MetadataSection(parquet_reader: super::ParquetReader) -> impl IntoView {
+pub fn MetadataSection(parquet_reader: super::ParquetFileReader) -> impl IntoView {
     let parquet_info = parquet_reader.info().clone();
     let created_by = parquet_info
         .metadata

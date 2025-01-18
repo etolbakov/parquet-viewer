@@ -1,7 +1,6 @@
 use std::sync::{Arc, LazyLock};
 
 use datafusion::execution::object_store::ObjectStoreUrl;
-use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::{prelude::Closure, JsCast};
 use leptos_router::hooks::{query_signal, use_query_map};
@@ -10,12 +9,10 @@ use object_store::path::Path;
 use object_store::{ObjectStore, PutPayload};
 use object_store_opendal::OpendalStore;
 use opendal::{services::Http, services::S3, Operator};
-use parquet::arrow::async_reader::{AsyncFileReader, ParquetObjectReader};
 use url::Url;
 use web_sys::js_sys;
 
 use crate::object_store_cache::ObjectStoreCache;
-use crate::{ParquetTable, SESSION_CTX};
 
 pub(crate) static INMEMORY_STORE: LazyLock<Arc<InMemory>> =
     LazyLock::new(|| Arc::new(InMemory::new()));
@@ -46,10 +43,24 @@ fn save_to_storage(key: &str, value: &str) {
 
 const DEFAULT_URL: &str = "https://raw.githubusercontent.com/RobinL/iris_parquet/main/gridwatch/gridwatch_2023-01-08.parquet";
 
+pub struct ParquetInfo {
+    pub table_name: String,
+    pub path: Path,
+    pub object_store_url: ObjectStoreUrl,
+    pub object_store: Arc<dyn ObjectStore>,
+}
+
+impl ParquetInfo {
+    /// The table path used to register_parquet in DataFusion
+    pub fn table_path(&self) -> String {
+        format!("{}{}", self.object_store_url, self.path)
+    }
+}
+
 #[component]
 pub fn ParquetReader(
     set_error_message: WriteSignal<Option<String>>,
-    set_parquet_table: WriteSignal<Option<ParquetTable>>,
+    read_call_back: impl Fn(ParquetInfo) + 'static + Send + Copy,
 ) -> impl IntoView {
     let default_tab = {
         let query = use_query_map();
@@ -126,7 +137,7 @@ pub fn ParquetReader(
                         view! {
                             <FileReader
                                 _set_error_message=set_error_message
-                                set_parquet_table=set_parquet_table
+                                read_call_back=read_call_back
                             />
                         }
                             .into_any()
@@ -135,7 +146,7 @@ pub fn ParquetReader(
                         view! {
                             <UrlReader
                                 set_error_message=set_error_message
-                                set_parquet_table=set_parquet_table
+                                read_call_back=read_call_back
                             />
                         }
                             .into_any()
@@ -144,7 +155,7 @@ pub fn ParquetReader(
                         view! {
                             <S3Reader
                                 set_error_message=set_error_message
-                                set_parquet_table=set_parquet_table
+                                read_call_back=read_call_back
                             />
                         }
                             .into_any()
@@ -159,7 +170,7 @@ pub fn ParquetReader(
 #[component]
 fn FileReader(
     _set_error_message: WriteSignal<Option<String>>,
-    set_parquet_table: WriteSignal<Option<ParquetTable>>,
+    read_call_back: impl Fn(ParquetInfo) + 'static + Send + Copy,
 ) -> impl IntoView {
     let on_file_select = move |ev: web_sys::Event| {
         let input: web_sys::HtmlInputElement = event_target(&ev);
@@ -178,31 +189,17 @@ fn FileReader(
             let uint8_array = js_sys::Uint8Array::new(&array_buffer);
             let bytes = bytes::Bytes::from(uint8_array.to_vec());
             leptos::task::spawn_local(async move {
-                let ctx = SESSION_CTX.as_ref();
                 let object_store = INMEMORY_STORE.clone();
                 let path = Path::parse(&table_name).unwrap();
                 let payload = PutPayload::from_bytes(bytes.clone());
                 object_store.put(&path, payload).await.unwrap();
-                let meta = object_store
-                    .head(&Path::parse(&table_name).unwrap())
-                    .await
-                    .unwrap();
-                let mut reader = ParquetObjectReader::new(object_store, meta)
-                    .with_preload_column_index(true)
-                    .with_preload_offset_index(true);
-                let metadata = reader.get_metadata().await.unwrap();
-                ctx.register_parquet(
-                    &table_name,
-                    &format!("mem:///{}", table_name),
-                    Default::default(),
-                )
-                .await
-                .unwrap();
-                set_parquet_table.set(Some(ParquetTable {
-                    reader,
-                    table_name,
-                    metadata,
-                }));
+                let object_store_url = ObjectStoreUrl::parse("mem://").unwrap();
+                read_call_back(ParquetInfo {
+                    table_name: table_name.clone(),
+                    path: Path::parse(table_name).unwrap(),
+                    object_store_url,
+                    object_store,
+                });
             });
         }) as Box<dyn FnMut(_)>);
 
@@ -228,7 +225,7 @@ fn FileReader(
 #[component]
 fn UrlReader(
     set_error_message: WriteSignal<Option<String>>,
-    set_parquet_table: WriteSignal<Option<ParquetTable>>,
+    read_call_back: impl Fn(ParquetInfo) + 'static + Send + Copy,
 ) -> impl IntoView {
     let (url_query, set_url_query) = query_signal::<String>("url");
     let default_url = {
@@ -264,35 +261,19 @@ fn UrlReader(
             .unwrap_or("uploaded.parquet")
             .to_string();
 
-        leptos::task::spawn_local(async move {
-            let builder = Http::default().endpoint(&endpoint);
-            let Ok(op) = Operator::new(builder) else {
-                set_error_message.set(Some("Failed to create HTTP operator".into()));
-                return;
-            };
-            let op = op.finish();
-            let object_store = Arc::new(ObjectStoreCache::new(OpendalStore::new(op)));
-            let meta = object_store
-                .head(&Path::parse(&path).unwrap())
-                .await
-                .unwrap();
-            let mut reader = ParquetObjectReader::new(object_store.clone(), meta)
-                .with_preload_column_index(true)
-                .with_preload_offset_index(true);
-            let metadata = reader.get_metadata().await.unwrap();
-            let object_store_url = ObjectStoreUrl::parse(&endpoint).unwrap();
-            let ctx = SESSION_CTX.as_ref();
-            ctx.register_object_store(object_store_url.as_ref(), object_store);
-            log!("table_name: {}, url_str: {}", table_name, url_str);
-            ctx.register_parquet(&table_name, &url_str, Default::default())
-                .await
-                .unwrap();
-
-            set_parquet_table.set(Some(ParquetTable {
-                reader,
-                table_name,
-                metadata,
-            }));
+        let builder = Http::default().endpoint(&endpoint);
+        let Ok(op) = Operator::new(builder) else {
+            set_error_message.set(Some("Failed to create HTTP operator".into()));
+            return;
+        };
+        let op = op.finish();
+        let object_store = Arc::new(ObjectStoreCache::new(OpendalStore::new(op)));
+        let object_store_url = ObjectStoreUrl::parse(&endpoint).unwrap();
+        read_call_back(ParquetInfo {
+            table_name: table_name.clone(),
+            path: Path::parse(path).unwrap(),
+            object_store_url,
+            object_store,
         });
     };
 
@@ -339,7 +320,7 @@ fn UrlReader(
 #[component]
 fn S3Reader(
     set_error_message: WriteSignal<Option<String>>,
-    set_parquet_table: WriteSignal<Option<ParquetTable>>,
+    read_call_back: impl Fn(ParquetInfo) + 'static + Send + Copy,
 ) -> impl IntoView {
     let (s3_bucket, set_s3_bucket) = signal(get_stored_value(S3_BUCKET_KEY, ""));
     let (s3_region, set_s3_region) = signal(get_stored_value(S3_REGION_KEY, "us-east-1"));
@@ -385,43 +366,23 @@ fn S3Reader(
             .unwrap_or("uploaded.parquet")
             .to_string();
 
-        leptos::task::spawn_local(async move {
-            let cfg = S3::default()
-                .endpoint(&endpoint)
-                .access_key_id(&access_key_id)
-                .secret_access_key(&secret_key)
-                .bucket(&bucket)
-                .region(&region);
+        let cfg = S3::default()
+            .endpoint(&endpoint)
+            .access_key_id(&access_key_id)
+            .secret_access_key(&secret_key)
+            .bucket(&bucket)
+            .region(&region);
 
-            let path = format!("s3://{}", bucket);
+        let path = format!("s3://{}", bucket);
 
-            let op = Operator::new(cfg).unwrap().finish();
-            let object_store = Arc::new(OpendalStore::new(op));
-            let meta = object_store
-                .head(&Path::parse(&s3_file_path.get()).unwrap())
-                .await
-                .unwrap();
-            let mut reader = ParquetObjectReader::new(object_store.clone(), meta)
-                .with_preload_column_index(true)
-                .with_preload_offset_index(true);
-            let metadata = reader.get_metadata().await.unwrap();
-            let object_store_url = ObjectStoreUrl::parse(&path).unwrap();
-            let ctx = SESSION_CTX.as_ref();
-            ctx.register_object_store(object_store_url.as_ref(), object_store);
-
-            ctx.register_parquet(
-                &file_name,
-                &format!("s3://{}/{}", bucket, s3_file_path.get()),
-                Default::default(),
-            )
-            .await
-            .unwrap();
-
-            set_parquet_table.set(Some(ParquetTable {
-                reader,
-                table_name: file_name,
-                metadata,
-            }));
+        let op = Operator::new(cfg).unwrap().finish();
+        let object_store = Arc::new(ObjectStoreCache::new(OpendalStore::new(op)));
+        let object_store_url = ObjectStoreUrl::parse(&path).unwrap();
+        read_call_back(ParquetInfo {
+            table_name: file_name.clone(),
+            path: Path::parse(s3_file_path.get()).unwrap(),
+            object_store_url,
+            object_store: object_store.clone(),
         });
     };
 

@@ -9,7 +9,8 @@ use leptos_router::{
     components::Router,
     hooks::{query_signal, use_query_map},
 };
-use parquet_reader::{ParquetReader, INMEMORY_STORE};
+use object_store::path::Path;
+use parquet_reader::{ParquetInfo, ParquetReader, INMEMORY_STORE};
 
 use query_results::{export_to_csv_inner, export_to_parquet_inner, QueryResult, QueryResultView};
 use schema::SchemaSection;
@@ -27,7 +28,10 @@ use std::{sync::Arc, sync::LazyLock};
 use arrow::datatypes::SchemaRef;
 use leptos::{logging, prelude::*};
 use parquet::{
-    arrow::{async_reader::ParquetObjectReader, parquet_to_arrow_schema},
+    arrow::{
+        async_reader::{AsyncFileReader, ParquetObjectReader},
+        parquet_to_arrow_schema,
+    },
     errors::ParquetError,
     file::metadata::ParquetMetaData,
 };
@@ -50,12 +54,12 @@ pub(crate) static SESSION_CTX: LazyLock<Arc<SessionContext>> = LazyLock::new(|| 
 });
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParquetReader {
+pub(crate) struct ParquetFileReader {
     parquet_table: ParquetTable,
     display_info: DisplayInfo,
 }
 
-impl ParquetReader {
+impl ParquetFileReader {
     pub fn new(table: ParquetTable) -> Result<Self> {
         let metadata = table.metadata.clone();
         let size = metadata.memory_size();
@@ -227,10 +231,10 @@ fn App() -> impl IntoView {
 
     let (show_settings, set_show_settings) = signal(false);
 
-    let parquet_reader = Memo::new(move |_| {
+    let parquet_file_reader = Memo::new(move |_| {
         parquet_table
             .get()
-            .and_then(|table| ParquetReader::new(table).ok())
+            .and_then(|table| ParquetFileReader::new(table).ok())
     });
 
     let (force_update_user_input, set_force_update_user_input) = signal(false);
@@ -245,7 +249,7 @@ fn App() -> impl IntoView {
     };
 
     Effect::watch(
-        parquet_reader,
+        parquet_file_reader,
         move |reader, old_reader, _| {
             let Some(reader) = reader else { return };
 
@@ -283,7 +287,7 @@ fn App() -> impl IntoView {
 
             let user_input = user_input_str.clone();
             leptos::task::spawn_local(async move {
-                let Some(parquet_reader) = parquet_reader.get() else {
+                let Some(parquet_reader) = parquet_file_reader.get() else {
                     return;
                 };
                 let sql = match query_input::user_input_to_sql(&user_input, &parquet_reader).await {
@@ -354,6 +358,51 @@ fn App() -> impl IntoView {
         true,
     );
 
+    let on_parquet_read = move |parquet_info: ParquetInfo| {
+        leptos::task::spawn_local(async move {
+            let meta = parquet_info
+                .object_store
+                .head(&Path::parse(&parquet_info.path).unwrap())
+                .await
+                .unwrap();
+            let mut reader = ParquetObjectReader::new(parquet_info.object_store.clone(), meta)
+                .with_preload_column_index(true)
+                .with_preload_offset_index(true);
+            let metadata = reader.get_metadata().await.unwrap();
+
+            let table_path = parquet_info.table_path();
+
+            let ctx = SESSION_CTX.as_ref();
+            if ctx
+                .runtime_env()
+                .object_store(&parquet_info.object_store_url)
+                .is_err()
+            {
+                logging::log!(
+                    "Object store {} not found, registering",
+                    parquet_info.object_store_url
+                );
+                ctx.register_object_store(
+                    parquet_info.object_store_url.as_ref(),
+                    parquet_info.object_store,
+                );
+            } else {
+                logging::log!(
+                    "Object store {} found, using existing store",
+                    parquet_info.object_store_url
+                );
+            }
+            ctx.register_parquet(&parquet_info.table_name, &table_path, Default::default())
+                .await
+                .unwrap();
+            set_parquet_table.set(Some(ParquetTable {
+                reader,
+                table_name: parquet_info.table_name,
+                metadata,
+            }));
+        });
+    };
+
     view! {
         <div class="container mx-auto px-4 py-8 max-w-6xl">
             <h1 class="text-3xl font-bold mb-8 flex items-center justify-between">
@@ -396,7 +445,7 @@ fn App() -> impl IntoView {
             <div class="space-y-6">
                 <ParquetReader
                     set_error_message=set_error_message
-                    set_parquet_table=set_parquet_table
+                    read_call_back=on_parquet_read
                 />
 
                 {move || {
@@ -429,7 +478,7 @@ fn App() -> impl IntoView {
                         parquet_table
                             .get()
                             .map(|_| {
-                                match parquet_reader() {
+                                match parquet_file_reader() {
                                     Some(info) => {
                                         if info.info().row_group_count > 0 {
                                             view! {
@@ -467,7 +516,7 @@ fn App() -> impl IntoView {
 
                 <div class="mt-8">
                     {move || {
-                        let info = parquet_reader();
+                        let info = parquet_file_reader();
                         match info {
                             Some(info) => {
                                 view! {

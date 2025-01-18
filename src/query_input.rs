@@ -17,7 +17,7 @@ use web_sys::{js_sys, Headers, Request, RequestInit, RequestMode, Response};
 
 use crate::{
     settings::{get_stored_value, ANTHROPIC_API_KEY},
-    ParquetReader, SESSION_CTX,
+    ParquetFileReader, SESSION_CTX,
 };
 
 pub(crate) async fn execute_query_inner(
@@ -123,7 +123,7 @@ pub fn QueryInput(
 
 pub(crate) async fn user_input_to_sql(
     input: &str,
-    parquet_reader: &ParquetReader,
+    parquet_reader: &ParquetFileReader,
 ) -> Result<String, String> {
     // if the input seems to be a SQL query, return it as is
     if input.starts_with("select") || input.starts_with("SELECT") {

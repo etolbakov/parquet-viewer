@@ -145,7 +145,7 @@ impl ChunkReader for ColumnChunk {
 }
 
 #[component]
-pub fn RowGroupColumn(parquet_reader: super::ParquetReader) -> impl IntoView {
+pub fn RowGroupColumn(parquet_reader: super::ParquetFileReader) -> impl IntoView {
     let (selected_row_group, set_selected_row_group) = signal(0);
     let (selected_column, set_selected_column) = signal(0);
 
