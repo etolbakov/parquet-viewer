@@ -6,11 +6,8 @@ use datafusion::{
     error::DataFusionError,
     physical_plan::{collect, ExecutionPlan},
 };
+use leptos::wasm_bindgen::{JsCast, JsValue};
 use leptos::{logging, prelude::*};
-use leptos::{
-    reactive::wrappers::write::SignalSetter,
-    wasm_bindgen::{JsCast, JsValue},
-};
 use serde_json::json;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{js_sys, Headers, Request, RequestInit, RequestMode, Response};
@@ -39,8 +36,8 @@ pub(crate) async fn execute_query_inner(
 
 #[component]
 pub fn QueryInput(
-    user_input: Memo<Option<String>>,
-    set_user_input: SignalSetter<Option<String>>,
+    user_input: ReadSignal<Option<String>>,
+    on_user_submit_query: impl Fn(String) + 'static + Send + Copy,
 ) -> impl IntoView {
     let (api_key, _) = signal({
         let window = web_sys::window().unwrap();
@@ -70,13 +67,17 @@ pub fn QueryInput(
     let key_down = move |ev: web_sys::KeyboardEvent| {
         if ev.key() == "Enter" {
             let input = input_value.get();
-            set_user_input.set(input.clone());
+            if let Some(input) = input {
+                on_user_submit_query(input);
+            }
         }
     };
 
     let button_press = move |_ev: web_sys::MouseEvent| {
         let input = input_value.get();
-        set_user_input.set(input.clone());
+        if let Some(input) = input {
+            on_user_submit_query(input);
+        }
     };
 
     view! {

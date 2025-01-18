@@ -1,18 +1,14 @@
 mod schema;
 use datafusion::{
-    datasource::MemTable,
     execution::object_store::ObjectStoreUrl,
     physical_plan::ExecutionPlan,
     prelude::{SessionConfig, SessionContext},
 };
-use leptos_router::{
-    components::Router,
-    hooks::{query_signal, use_query_map},
-};
+use leptos_router::components::Router;
 use object_store::path::Path;
 use parquet_reader::{ParquetInfo, ParquetReader, INMEMORY_STORE};
 
-use query_results::{export_to_csv_inner, export_to_parquet_inner, QueryResult, QueryResultView};
+use query_results::{QueryResult, QueryResultView};
 use schema::SchemaSection;
 
 mod parquet_reader;
@@ -181,12 +177,62 @@ async fn execute_query_async(
 struct ParquetTable {
     reader: ParquetObjectReader,
     table_name: String,
+    path: Path,
+    object_store_url: ObjectStoreUrl,
     display_info: DisplayInfo,
 }
 
 impl PartialEq for ParquetTable {
     fn eq(&self, other: &Self) -> bool {
         self.table_name == other.table_name
+            && self.path == other.path
+            && self.object_store_url == other.object_store_url
+    }
+}
+
+async fn get_parquet_table(parquet_info: ParquetInfo) -> ParquetTable {
+    let meta = parquet_info
+        .object_store
+        .head(&Path::parse(&parquet_info.path).unwrap())
+        .await
+        .unwrap();
+    let mut reader = ParquetObjectReader::new(parquet_info.object_store.clone(), meta)
+        .with_preload_column_index(true)
+        .with_preload_offset_index(true);
+    let metadata = reader.get_metadata().await.unwrap();
+
+    let table_path = parquet_info.table_path();
+
+    let ctx = SESSION_CTX.as_ref();
+    if ctx
+        .runtime_env()
+        .object_store(&parquet_info.object_store_url)
+        .is_err()
+    {
+        logging::log!(
+            "Object store {} not found, registering",
+            parquet_info.object_store_url
+        );
+        ctx.register_object_store(
+            parquet_info.object_store_url.as_ref(),
+            parquet_info.object_store,
+        );
+    } else {
+        logging::log!(
+            "Object store {} found, using existing store",
+            parquet_info.object_store_url
+        );
+    }
+    ctx.register_parquet(&parquet_info.table_name, &table_path, Default::default())
+        .await
+        .unwrap();
+    let size = metadata.memory_size();
+    ParquetTable {
+        reader,
+        table_name: parquet_info.table_name,
+        path: parquet_info.path,
+        object_store_url: parquet_info.object_store_url,
+        display_info: DisplayInfo::from_metadata(metadata, size as u64).unwrap(),
     }
 }
 
@@ -194,16 +240,11 @@ impl PartialEq for ParquetTable {
 fn App() -> impl IntoView {
     let (error_message, set_error_message) = signal(Option::<String>::None);
     let (parquet_table, set_parquet_table) = signal(None::<Arc<ParquetTable>>);
-    let (user_input, set_user_input) = query_signal::<String>("query");
+    let (user_input, set_user_input) = signal(Option::<String>::None);
 
-    let export_to = use_query_map().with(|map| map.get("export").map(|v| v.to_string()));
-
-    let (sql_query, set_sql_query) = signal(String::new());
     let (query_results, set_query_results) = signal(Vec::<QueryResult>::new());
 
     let (show_settings, set_show_settings) = signal(false);
-
-    let (force_update_user_input, set_force_update_user_input) = signal(false);
 
     let toggle_display = move |id: usize| {
         set_query_results.update(|r| {
@@ -214,161 +255,39 @@ fn App() -> impl IntoView {
         });
     };
 
-    Effect::watch(
-        parquet_table,
-        move |table, old_table, _| {
-            let Some(table) = table else { return };
-
-            match old_table.flatten() {
-                Some(old_table) => {
-                    if old_table.table_name != table.table_name {
-                        let default_query =
-                            format!("select * from \"{}\" limit 10", table.table_name);
-                        set_user_input.set(Some(default_query));
-                    }
-                }
-                None => match user_input.get() {
-                    Some(user_input) => {
-                        set_user_input.set(Some(user_input));
-                        set_force_update_user_input.set(true);
-                    }
-                    None => {
-                        logging::log!("{}", table.display_info.to_string());
-                        let default_query =
-                            format!("select * from \"{}\" limit 10", table.table_name);
-                        set_user_input.set(Some(default_query));
-                    }
-                },
-            }
-        },
-        true,
-    );
-
-    Effect::watch(
-        move || (force_update_user_input.get(), user_input.get()),
-        move |(_, user_input_str), _, _| {
-            let Some(user_input_str) = user_input_str else {
+    let on_user_submit_query_call_back = move |query: String| {
+        set_user_input.set(Some(query.clone()));
+        leptos::task::spawn_local(async move {
+            let Some(table) = parquet_table.get() else {
                 return;
             };
-
-            let user_input = user_input_str.clone();
-            leptos::task::spawn_local(async move {
-                let Some(table) = parquet_table.get() else {
-                    return;
-                };
-                let sql = match query_input::user_input_to_sql(&user_input, &table).await {
-                    Ok(response) => response,
-                    Err(e) => {
-                        set_error_message.set(Some(e));
-                        return;
-                    }
-                };
-                logging::log!("{}", sql);
-                set_sql_query.set(sql);
-            });
-        },
-        true,
-    );
-
-    Effect::watch(
-        sql_query,
-        move |query, _, _| {
-            let bytes_opt = parquet_table.get();
-            set_error_message.set(None);
-
-            if query.trim().is_empty() {
-                return;
-            }
-
-            if let Some(_parquet_table) = bytes_opt {
-                let query = query.clone();
-                let export_to = export_to.clone();
-
-                leptos::task::spawn_local(async move {
-                    match execute_query_async(&query).await {
-                        Ok((results, physical_plan)) => {
-                            if let Some(export_to) = export_to {
-                                if export_to == "csv" {
-                                    export_to_csv_inner(&results);
-                                } else if export_to == "parquet" {
-                                    export_to_parquet_inner(&results);
-                                }
-                            }
-
-                            set_query_results.update(|r| {
-                                let id = r.len();
-                                if let Some(first_batch) = results.first() {
-                                    let schema = first_batch.schema();
-                                    let mem_table =
-                                        MemTable::try_new(schema, vec![results.clone()]).unwrap();
-                                    SESSION_CTX
-                                        .as_ref()
-                                        .register_table(format!("view_{}", id), Arc::new(mem_table))
-                                        .unwrap();
-                                }
-                                r.push(QueryResult::new(
-                                    id,
-                                    query,
-                                    Arc::new(results),
-                                    physical_plan,
-                                ));
-                            });
-                        }
-                        Err(e) => set_error_message.set(Some(e)),
-                    }
-                });
-            } else {
-                set_error_message.set(Some("No Parquet file loaded.".into()));
-            }
-        },
-        true,
-    );
-
-    let on_parquet_read = move |parquet_info: ParquetInfo| {
-        leptos::task::spawn_local(async move {
-            let meta = parquet_info
-                .object_store
-                .head(&Path::parse(&parquet_info.path).unwrap())
+            let sql = query_input::user_input_to_sql(&query, &table)
                 .await
                 .unwrap();
-            let mut reader = ParquetObjectReader::new(parquet_info.object_store.clone(), meta)
-                .with_preload_column_index(true)
-                .with_preload_offset_index(true);
-            let metadata = reader.get_metadata().await.unwrap();
-
-            let table_path = parquet_info.table_path();
-
-            let ctx = SESSION_CTX.as_ref();
-            if ctx
-                .runtime_env()
-                .object_store(&parquet_info.object_store_url)
-                .is_err()
-            {
-                logging::log!(
-                    "Object store {} not found, registering",
-                    parquet_info.object_store_url
-                );
-                ctx.register_object_store(
-                    parquet_info.object_store_url.as_ref(),
-                    parquet_info.object_store,
-                );
-            } else {
-                logging::log!(
-                    "Object store {} found, using existing store",
-                    parquet_info.object_store_url
-                );
+            match execute_query_async(&sql).await {
+                Ok((results, execution_plan)) => {
+                    set_query_results.update(|r| {
+                        let id = r.len();
+                        r.push(QueryResult::new(id, sql, Arc::new(results), execution_plan));
+                    });
+                }
+                Err(e) => set_error_message.set(Some(e)),
             }
-            ctx.register_parquet(&parquet_info.table_name, &table_path, Default::default())
-                .await
-                .unwrap();
-            let size = metadata.memory_size();
-            set_parquet_table.set(Some(Arc::new(ParquetTable {
-                reader,
-                table_name: parquet_info.table_name,
-                display_info: DisplayInfo::from_metadata(metadata, size as u64).unwrap(),
-            })));
         });
     };
+
+    let on_parquet_read_call_back =
+        move |parquet_info: Result<ParquetInfo, String>| match parquet_info {
+            Ok(parquet_info) => {
+                leptos::task::spawn_local(async move {
+                    let table = get_parquet_table(parquet_info).await;
+                    let default_query = format!("select * from \"{}\" limit 10", table.table_name);
+                    set_parquet_table.set(Some(Arc::new(table)));
+                    on_user_submit_query_call_back(default_query);
+                });
+            }
+            Err(e) => set_error_message.set(Some(e)),
+        };
 
     view! {
         <div class="container mx-auto px-4 py-8 max-w-6xl">
@@ -410,7 +329,9 @@ fn App() -> impl IntoView {
                 </div>
             </h1>
             <div class="space-y-6">
-                <ParquetReader set_error_message=set_error_message read_call_back=on_parquet_read />
+                <ParquetReader
+                    read_call_back=on_parquet_read_call_back
+                />
 
                 {move || {
                     error_message
@@ -446,7 +367,7 @@ fn App() -> impl IntoView {
                                     view! {
                                         <QueryInput
                                             user_input=user_input
-                                            set_user_input=set_user_input
+                                            on_user_submit_query=on_user_submit_query_call_back
                                         />
                                     }
                                         .into_any()
