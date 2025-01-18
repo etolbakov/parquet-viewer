@@ -51,6 +51,7 @@ leptos_router = { version = "0.7.0", features = ["nightly"] }
 object_store = "0.11.1"
 async-trait = "0.1.83"
 url = "2.5.4"
+anyhow = "1.0"
 
 [profile.release]
 strip = true

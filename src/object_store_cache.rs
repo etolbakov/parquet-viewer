@@ -79,7 +79,11 @@ impl ObjectStore for ObjectStoreCache {
         let mut cache = self.cache.lock().await;
         let bytes = match cache.entry(key) {
             Entry::Occupied(o) => {
-                log!("hit memory cache, range: {:?}", o.key().1);
+                log!(
+                    "Request hit cache, path {}, range: {:?}",
+                    location,
+                    o.key().1
+                );
                 o.get().clone()
             }
             Entry::Vacant(v) => {

@@ -1,5 +1,6 @@
 use std::sync::{Arc, LazyLock};
 
+use anyhow::Result;
 use datafusion::execution::object_store::ObjectStoreUrl;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::{prelude::Closure, JsCast};
@@ -59,7 +60,7 @@ impl ParquetInfo {
 
 #[component]
 pub fn ParquetReader(
-    read_call_back: impl Fn(Result<ParquetInfo, String>) + 'static + Send + Copy + Sync,
+    read_call_back: impl Fn(Result<ParquetInfo>) + 'static + Send + Copy + Sync,
 ) -> impl IntoView {
     let default_tab = {
         let query = use_query_map();
@@ -78,10 +79,10 @@ pub fn ParquetReader(
         }
     };
 
-    use_query_map().get().get("url").map(|url| {
+    if let Some(url) = use_query_map().get().get("url") {
         let parquet_info = read_from_url(&url);
         read_call_back(parquet_info);
-    });
+    }
 
     view! {
         <div class="bg-white rounded-lg border border-gray-300 p-3">
@@ -135,21 +136,15 @@ pub fn ParquetReader(
                 </nav>
             </div>
             {
-                view!{
+                view! {
                     <Show when=move || active_tab.get() == "file">
-                        <FileReader
-                            read_call_back=read_call_back
-                        />
+                        <FileReader read_call_back=read_call_back />
                     </Show>
                     <Show when=move || active_tab.get() == "url">
-                        <UrlReader
-                            read_call_back=read_call_back
-                        />
+                        <UrlReader read_call_back=read_call_back />
                     </Show>
                     <Show when=move || active_tab.get() == "s3">
-                        <S3Reader
-                            read_call_back=read_call_back
-                        />
+                        <S3Reader read_call_back=read_call_back />
                     </Show>
                 }
             }
@@ -159,7 +154,7 @@ pub fn ParquetReader(
 
 #[component]
 fn FileReader(
-    read_call_back: impl Fn(Result<ParquetInfo, String>) + 'static + Send + Copy,
+    read_call_back: impl Fn(Result<ParquetInfo>) + 'static + Send + Copy,
 ) -> impl IntoView {
     let on_file_select = move |ev: web_sys::Event| {
         let input: web_sys::HtmlInputElement = event_target(&ev);
@@ -211,14 +206,12 @@ fn FileReader(
     }
 }
 
-fn read_from_url(url_str: &str) -> Result<ParquetInfo, String> {
-    let Ok(url) = Url::parse(url_str) else {
-        return Err(format!("Invalid URL: {}", url_str));
-    };
+fn read_from_url(url_str: &str) -> Result<ParquetInfo> {
+    let url = Url::parse(url_str)?;
     let endpoint = format!(
         "{}://{}{}",
         url.scheme(),
-        url.host_str().unwrap(),
+        url.host_str().ok_or(anyhow::anyhow!("Empty host"))?,
         url.port().map_or("".to_string(), |p| format!(":{}", p))
     );
     let path = url.path().to_string();
@@ -230,15 +223,13 @@ fn read_from_url(url_str: &str) -> Result<ParquetInfo, String> {
         .to_string();
 
     let builder = Http::default().endpoint(&endpoint);
-    let Ok(op) = Operator::new(builder) else {
-        return Err("Failed to create HTTP operator".into());
-    };
+    let op = Operator::new(builder)?;
     let op = op.finish();
     let object_store = Arc::new(ObjectStoreCache::new(OpendalStore::new(op)));
-    let object_store_url = ObjectStoreUrl::parse(&endpoint).unwrap();
+    let object_store_url = ObjectStoreUrl::parse(&endpoint)?;
     Ok(ParquetInfo {
         table_name: table_name.clone(),
-        path: Path::parse(path).unwrap(),
+        path: Path::parse(path)?,
         object_store_url,
         object_store,
     })
@@ -246,7 +237,7 @@ fn read_from_url(url_str: &str) -> Result<ParquetInfo, String> {
 
 #[component]
 fn UrlReader(
-    read_call_back: impl Fn(Result<ParquetInfo, String>) + 'static + Send + Copy,
+    read_call_back: impl Fn(Result<ParquetInfo>) + 'static + Send + Copy,
 ) -> impl IntoView {
     let (url_query, set_url_query) = query_signal::<String>("url");
     let default_url = {
@@ -298,18 +289,14 @@ fn UrlReader(
     }
 }
 
-fn read_from_s3(
-    s3_bucket: &str,
-    s3_region: &str,
-    s3_file_path: &str,
-) -> Result<ParquetInfo, String> {
+fn read_from_s3(s3_bucket: &str, s3_region: &str, s3_file_path: &str) -> Result<ParquetInfo> {
     let endpoint = get_stored_value(S3_ENDPOINT_KEY, "https://s3.amazonaws.com");
     let access_key_id = get_stored_value(S3_ACCESS_KEY_ID_KEY, "");
     let secret_key = get_stored_value(S3_SECRET_KEY_KEY, "");
 
     // Validate inputs
     if endpoint.is_empty() || s3_bucket.is_empty() || s3_file_path.is_empty() {
-        return Err("All fields except region are required".into());
+        return Err(anyhow::anyhow!("All fields except region are required",));
     }
     let file_name = s3_file_path
         .split('/')
@@ -321,26 +308,24 @@ fn read_from_s3(
         .endpoint(&endpoint)
         .access_key_id(&access_key_id)
         .secret_access_key(&secret_key)
-        .bucket(&s3_bucket)
-        .region(&s3_region);
+        .bucket(s3_bucket)
+        .region(s3_region);
 
     let path = format!("s3://{}", s3_bucket);
 
-    let op = Operator::new(cfg).unwrap().finish();
+    let op = Operator::new(cfg)?.finish();
     let object_store = Arc::new(ObjectStoreCache::new(OpendalStore::new(op)));
-    let object_store_url = ObjectStoreUrl::parse(&path).unwrap();
+    let object_store_url = ObjectStoreUrl::parse(&path)?;
     Ok(ParquetInfo {
         table_name: file_name.clone(),
-        path: Path::parse(s3_file_path).unwrap(),
+        path: Path::parse(s3_file_path)?,
         object_store_url,
         object_store: object_store.clone(),
     })
 }
 
 #[component]
-fn S3Reader(
-    read_call_back: impl Fn(Result<ParquetInfo, String>) + 'static + Send + Copy,
-) -> impl IntoView {
+fn S3Reader(read_call_back: impl Fn(Result<ParquetInfo>) + 'static + Send + Copy) -> impl IntoView {
     let (s3_bucket, set_s3_bucket) = signal(get_stored_value(S3_BUCKET_KEY, ""));
     let (s3_region, set_s3_region) = signal(get_stored_value(S3_REGION_KEY, "us-east-1"));
     let (s3_file_path, set_s3_file_path) = signal(get_stored_value(S3_FILE_PATH_KEY, ""));
