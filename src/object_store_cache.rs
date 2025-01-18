@@ -96,6 +96,20 @@ impl ObjectStore for ObjectStoreCache {
         Ok(bytes)
     }
 
+    async fn get_ranges(
+        &self,
+        location: &Path,
+        ranges: &[Range<usize>],
+    ) -> object_store::Result<Vec<Bytes>> {
+        let mut tasks = Vec::with_capacity(ranges.len());
+        for range in ranges {
+            let task = self.get_range(location, range.clone());
+            tasks.push(task);
+        }
+        let results = futures::future::join_all(tasks).await;
+        Ok(results.into_iter().map(|r| r.unwrap()).collect())
+    }
+
     async fn delete(&self, location: &Path) -> Result<(), object_store::Error> {
         self.inner.delete(location).await
     }
