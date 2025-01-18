@@ -1,8 +1,12 @@
+use std::sync::Arc;
+
 use leptos::prelude::*;
 
+use crate::ParquetTable;
+
 #[component]
-pub fn MetadataSection(parquet_reader: super::ParquetFileReader) -> impl IntoView {
-    let parquet_info = parquet_reader.info().clone();
+pub fn MetadataSection(parquet_reader: Arc<ParquetTable>) -> impl IntoView {
+    let parquet_info = parquet_reader.display_info.clone();
     let created_by = parquet_info
         .metadata
         .file_metadata()

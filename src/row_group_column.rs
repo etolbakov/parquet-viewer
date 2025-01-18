@@ -12,7 +12,7 @@ use parquet::{
     },
 };
 
-use crate::format_rows;
+use crate::{format_rows, ParquetTable};
 
 fn stats_to_string(stats: Option<Statistics>) -> String {
     match stats {
@@ -145,11 +145,12 @@ impl ChunkReader for ColumnChunk {
 }
 
 #[component]
-pub fn RowGroupColumn(parquet_reader: super::ParquetFileReader) -> impl IntoView {
+pub fn RowGroupColumn(parquet_reader: Arc<ParquetTable>) -> impl IntoView {
+    let display_info = &parquet_reader.display_info;
     let (selected_row_group, set_selected_row_group) = signal(0);
     let (selected_column, set_selected_column) = signal(0);
 
-    let metadata = parquet_reader.info().metadata.clone();
+    let metadata = display_info.metadata.clone();
     let row_group_info = move || {
         let rg = metadata.row_group(selected_row_group.get());
         let compressed_size = rg.compressed_size() as f64 / 1_048_576.0;
@@ -159,8 +160,7 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetFileReader) -> impl IntoView
     };
 
     let sorted_fields = {
-        let mut fields = parquet_reader
-            .info()
+        let mut fields = display_info
             .schema
             .fields
             .iter()
@@ -172,7 +172,7 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetFileReader) -> impl IntoView
         fields
     };
 
-    let metadata = parquet_reader.info().metadata.clone();
+    let metadata = display_info.metadata.clone();
     let column_byte_range = move || {
         let rg = metadata.row_group(selected_row_group.get());
         let col = rg.column(selected_column.get());
@@ -181,8 +181,8 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetFileReader) -> impl IntoView
 
     let (column_info, set_column_info) = signal(None::<ColumnInfo>);
 
-    let metadata = parquet_reader.info().metadata.clone();
-    let reader = parquet_reader.parquet_table.reader.clone();
+    let metadata = display_info.metadata.clone();
+    let reader = parquet_reader.reader.clone();
     Effect::watch(
         column_byte_range,
         move |byte_range, _, _| {
@@ -245,7 +245,7 @@ pub fn RowGroupColumn(parquet_reader: super::ParquetFileReader) -> impl IntoView
                                 .set(event_target_value(&ev).parse::<usize>().unwrap_or(0))
                         }
                     >
-                        {(0..parquet_reader.info().row_group_count)
+                        {(0..display_info.row_group_count)
                             .map(|i| {
                                 view! {
                                     <option value=i.to_string() class="py-2">

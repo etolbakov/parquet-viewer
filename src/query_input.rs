@@ -17,7 +17,7 @@ use web_sys::{js_sys, Headers, Request, RequestInit, RequestMode, Response};
 
 use crate::{
     settings::{get_stored_value, ANTHROPIC_API_KEY},
-    ParquetFileReader, SESSION_CTX,
+    ParquetTable, SESSION_CTX,
 };
 
 pub(crate) async fn execute_query_inner(
@@ -121,10 +121,7 @@ pub fn QueryInput(
     }
 }
 
-pub(crate) async fn user_input_to_sql(
-    input: &str,
-    parquet_reader: &ParquetFileReader,
-) -> Result<String, String> {
+pub(crate) async fn user_input_to_sql(input: &str, table: &ParquetTable) -> Result<String, String> {
     // if the input seems to be a SQL query, return it as is
     if input.starts_with("select") || input.starts_with("SELECT") {
         return Ok(input.to_string());
@@ -132,8 +129,8 @@ pub(crate) async fn user_input_to_sql(
 
     // otherwise, treat it as some natural language
 
-    let schema = &parquet_reader.info().schema;
-    let file_name = parquet_reader.table_name();
+    let schema = &table.display_info.schema;
+    let file_name = &table.table_name;
     let api_key = get_stored_value(ANTHROPIC_API_KEY, "");
     let schema_str = schema_to_brief_str(schema);
     logging::log!("Processing user input: {}", input);
