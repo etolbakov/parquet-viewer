@@ -1,4 +1,9 @@
-use leptos::prelude::*;
+use crate::execute_query_async;
+use arrow_array::cast::AsArray;
+use arrow_array::types::Int64Type;
+use leptos::{logging, prelude::*};
+use std::clone::Clone;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 struct ColumnData {
@@ -19,10 +24,12 @@ enum SortField {
     CompressedSize,
     UncompressedSize,
     CompressionRatio,
+    NullCount,
 }
 
 #[component]
-pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
+pub fn SchemaSection(parquet_reader: super::ParquetReader) -> impl IntoView {
+    let parquet_info = parquet_reader.info().clone();
     let schema = parquet_info.schema.clone();
     let metadata = parquet_info.metadata.clone();
     let mut column_info = vec![
@@ -52,6 +59,7 @@ pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
     let (sort_field, set_sort_field) = signal(SortField::Id);
     let (sort_ascending, set_sort_ascending) = signal(true);
 
+    let table_name = Memo::new(move |_| parquet_reader.clone().parquet_table.table_name);
     // Transform the data into ColumnData structs
     let column_data = Memo::new(move |_| {
         let mut data: Vec<ColumnData> = schema
@@ -90,6 +98,7 @@ pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
                     .compression_ratio
                     .partial_cmp(&b.compression_ratio)
                     .unwrap(),
+                SortField::NullCount => a.null_count.cmp(&b.null_count),
             };
             if sort_ascending.get() {
                 cmp
@@ -119,6 +128,34 @@ pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
         } else {
             format!("{} B", size)
         }
+    }
+
+    fn calculate_distinct(
+        set_distinct_values: WriteSignal<HashMap<usize, String>>,
+        col_id: usize,
+        column_name: &String,
+        table_name: &String,
+    ) {
+        let distinct_query = format!(
+            "SELECT COUNT(DISTINCT \"{}\") from \"{}\"",
+            column_name, table_name
+        );
+        leptos::task::spawn_local(async move {
+            match execute_query_async(&distinct_query).await {
+                Ok((results, _)) => {
+                    if let Some(first_batch) = results.first() {
+                        let distinct_value =
+                            first_batch.column(0).as_primitive::<Int64Type>().value(0);
+                        set_distinct_values.update(|m| {
+                            m.insert(col_id, distinct_value.to_string());
+                        });
+                    }
+                }
+                Err(e) => {
+                    logging::log!("Failed to find distinct value. Error '{}'", e);
+                }
+            }
+        });
     }
 
     view! {
@@ -165,22 +202,30 @@ pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
                         </th>
                         <th
                             class="px-4 py-2 cursor-pointer hover:bg-gray-100 text-left"
-                            on:click=move |_| sort_by(SortField::CompressionRatio)
+                            on:click=move |_| sort_by(SortField::NullCount)
                         >
                             "Null Count"
+                        </th>
+                        <th class="px-4 py-2 cursor-pointer hover:bg-gray-100 text-left">
+                            "Distinct Count"
                         </th>
                     </tr>
                 </thead>
                 <tbody>
                     {move || {
+                        let (distinct_values, set_distinct_values) = signal(HashMap::<usize, String>::new());
                         column_data
                             .get()
                             .into_iter()
                             .map(|col| {
+
+                                set_distinct_values.update(|texts| {
+                                    texts.insert(col.id, String::from("👁️‍🗨"));
+                                });
                                 view! {
                                     <tr class="hover:bg-gray-50">
                                         <td class="px-4 py-2 text-gray-700">{col.id}</td>
-                                        <td class="px-4 py-2 text-gray-700">{col.name}</td>
+                                        <td class="px-4 py-2 text-gray-700">{col.name.clone()}</td>
                                         <td class="px-4 py-2 text-gray-500">{col.data_type}</td>
                                         <td class="px-4 py-2 text-gray-500">
                                             {format_size(col.compressed_size)}
@@ -192,6 +237,17 @@ pub fn SchemaSection(parquet_info: super::DisplayInfo) -> impl IntoView {
                                             {format!("{:.2}%", col.compression_ratio * 100.0)}
                                         </td>
                                         <td class="px-4 py-2 text-gray-500">{col.null_count}</td>
+                                        <td class="px-4 py-2 text-gray-500">
+                                            <button
+                                                disabled=move || {
+                                                        distinct_values.get().into_iter().filter(|(id,v)| id == &col.id && v != "👁️‍🗨").count() != 0
+                                                }
+                                                on:click=move |_| {
+                                                calculate_distinct(set_distinct_values, col.id, &col.name.clone(), &table_name.get());
+                                            }>
+                                                {move || distinct_values.get().into_iter().filter(|(id,_)| id == &col.id).next().map(|(_,text)| text.clone())}
+                                            </button>
+                                        </td>
                                     </tr>
                                 }
                             })

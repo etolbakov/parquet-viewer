@@ -473,7 +473,7 @@ fn App() -> impl IntoView {
                                             <MetadataSection parquet_reader=info.clone() />
                                         </div>
                                         <div class="w-full">
-                                            <SchemaSection parquet_info=info.info().clone() />
+                                            <SchemaSection parquet_reader=info.clone() />
                                         </div>
                                     </div>
                                 }
