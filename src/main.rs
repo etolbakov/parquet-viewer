@@ -1,41 +1,35 @@
-mod schema;
+use anyhow::Result;
+use arrow::datatypes::SchemaRef;
 use datafusion::{
-    datasource::MemTable,
     execution::object_store::ObjectStoreUrl,
-    physical_plan::ExecutionPlan,
     prelude::{SessionConfig, SessionContext},
 };
-use file_reader::{FileReader, INMEMORY_STORE};
-use leptos_router::{
-    components::Router,
-    hooks::{query_signal, use_query_map},
+use leptos::{logging, prelude::*};
+use leptos_router::components::Router;
+use object_store::path::Path;
+use parquet::{
+    arrow::{
+        async_reader::{AsyncFileReader, ParquetObjectReader},
+        parquet_to_arrow_schema,
+    },
+    file::metadata::ParquetMetaData,
 };
-
-use query_results::{export_to_csv_inner, export_to_parquet_inner, QueryResult, QueryResultView};
-use schema::SchemaSection;
-
-mod file_reader;
-mod query_results;
-mod row_group_column;
+use std::{sync::Arc, sync::LazyLock};
 
 mod metadata;
 mod object_store_cache;
-use metadata::MetadataSection;
-
-use std::{sync::Arc, sync::LazyLock};
-
-use arrow::datatypes::SchemaRef;
-use leptos::{logging, prelude::*};
-use parquet::{
-    arrow::{async_reader::ParquetObjectReader, parquet_to_arrow_schema},
-    errors::ParquetError,
-    file::metadata::ParquetMetaData,
-};
-
+mod parquet_reader;
 mod query_input;
-use query_input::{execute_query_inner, QueryInput};
-
+mod query_results;
+mod row_group_column;
+mod schema;
 mod settings;
+
+use metadata::MetadataSection;
+use parquet_reader::{ParquetInfo, ParquetReader, INMEMORY_STORE};
+use query_input::{execute_query_inner, QueryInput};
+use query_results::{QueryResult, QueryResultView};
+use schema::SchemaSection;
 use settings::Settings;
 
 pub(crate) static SESSION_CTX: LazyLock<Arc<SessionContext>> = LazyLock::new(|| {
@@ -48,34 +42,6 @@ pub(crate) static SESSION_CTX: LazyLock<Arc<SessionContext>> = LazyLock::new(|| 
     ctx.register_object_store(object_store_url.as_ref(), object_store);
     ctx
 });
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParquetReader {
-    parquet_table: ParquetTable,
-    display_info: DisplayInfo,
-}
-
-impl ParquetReader {
-    pub fn new(table: ParquetTable) -> Result<Self> {
-        let metadata = table.metadata.clone();
-        let size = metadata.memory_size();
-
-        let parquet_info = DisplayInfo::from_metadata(metadata, size as u64)?;
-
-        Ok(Self {
-            parquet_table: table,
-            display_info: parquet_info,
-        })
-    }
-
-    fn info(&self) -> &DisplayInfo {
-        &self.display_info
-    }
-
-    fn table_name(&self) -> &str {
-        &self.parquet_table.table_name
-    }
-}
 
 #[derive(Debug, Clone, PartialEq)]
 struct DisplayInfo {
@@ -95,10 +61,7 @@ struct DisplayInfo {
 }
 
 impl DisplayInfo {
-    fn from_metadata(
-        metadata: Arc<ParquetMetaData>,
-        metadata_len: u64,
-    ) -> Result<Self, ParquetError> {
+    fn from_metadata(metadata: Arc<ParquetMetaData>, metadata_len: u64) -> Result<Self> {
         let compressed_size = metadata
             .row_groups()
             .iter()
@@ -191,49 +154,73 @@ impl std::fmt::Display for DisplayInfo {
     }
 }
 
-async fn execute_query_async(
-    query: &str,
-) -> Result<(Vec<arrow::array::RecordBatch>, Arc<dyn ExecutionPlan>), String> {
-    let (results, physical_plan) = execute_query_inner(query)
-        .await
-        .map_err(|e| format!("Failed to execute query: {}", e))?;
-
-    Ok((results, physical_plan))
-}
-
 #[derive(Debug, Clone)]
 struct ParquetTable {
     reader: ParquetObjectReader,
-    metadata: Arc<ParquetMetaData>,
     table_name: String,
+    path: Path,
+    object_store_url: ObjectStoreUrl,
+    display_info: DisplayInfo,
 }
 
 impl PartialEq for ParquetTable {
     fn eq(&self, other: &Self) -> bool {
         self.table_name == other.table_name
+            && self.path == other.path
+            && self.object_store_url == other.object_store_url
     }
+}
+
+async fn get_parquet_table(parquet_info: ParquetInfo) -> Result<ParquetTable> {
+    let meta = parquet_info.object_store.head(&parquet_info.path).await?;
+    let mut reader = ParquetObjectReader::new(parquet_info.object_store.clone(), meta)
+        .with_preload_column_index(true)
+        .with_preload_offset_index(true);
+    let metadata = reader.get_metadata().await?;
+
+    let table_path = parquet_info.table_path();
+
+    let ctx = SESSION_CTX.as_ref();
+    if ctx
+        .runtime_env()
+        .object_store(&parquet_info.object_store_url)
+        .is_err()
+    {
+        logging::log!(
+            "Object store {} not found, registering",
+            parquet_info.object_store_url
+        );
+        ctx.register_object_store(
+            parquet_info.object_store_url.as_ref(),
+            parquet_info.object_store,
+        );
+    } else {
+        logging::log!(
+            "Object store {} found, using existing store",
+            parquet_info.object_store_url
+        );
+    }
+    ctx.register_parquet(&parquet_info.table_name, &table_path, Default::default())
+        .await?;
+    let size = metadata.memory_size();
+    Ok(ParquetTable {
+        reader,
+        table_name: parquet_info.table_name,
+        path: parquet_info.path,
+        object_store_url: parquet_info.object_store_url,
+        display_info: DisplayInfo::from_metadata(metadata, size as u64)?,
+    })
 }
 
 #[component]
 fn App() -> impl IntoView {
     let (error_message, set_error_message) = signal(Option::<String>::None);
-    let (parquet_table, set_parquet_table) = signal(None::<ParquetTable>);
-    let (user_input, set_user_input) = query_signal::<String>("query");
+    let (parquet_table, set_parquet_table) = signal(None::<Arc<ParquetTable>>);
+    let (user_input, set_user_input) = signal(Option::<String>::None);
 
-    let export_to = use_query_map().with(|map| map.get("export").map(|v| v.to_string()));
-
-    let (sql_query, set_sql_query) = signal(String::new());
     let (query_results, set_query_results) = signal(Vec::<QueryResult>::new());
 
     let (show_settings, set_show_settings) = signal(false);
-
-    let parquet_reader = Memo::new(move |_| {
-        parquet_table
-            .get()
-            .and_then(|table| ParquetReader::new(table).ok())
-    });
-
-    let (force_update_user_input, set_force_update_user_input) = signal(false);
 
     let toggle_display = move |id: usize| {
         set_query_results.update(|r| {
@@ -244,115 +231,51 @@ fn App() -> impl IntoView {
         });
     };
 
-    Effect::watch(
-        parquet_reader,
-        move |reader, old_reader, _| {
-            let Some(reader) = reader else { return };
-
-            match old_reader.flatten() {
-                Some(old_reader) => {
-                    if old_reader.table_name() != reader.table_name() {
-                        let default_query =
-                            format!("select * from \"{}\" limit 10", reader.table_name());
-                        set_user_input.set(Some(default_query));
-                    }
-                }
-                None => match user_input.get() {
-                    Some(user_input) => {
-                        set_user_input.set(Some(user_input));
-                        set_force_update_user_input.set(true);
-                    }
-                    None => {
-                        logging::log!("{}", reader.info().to_string());
-                        let default_query =
-                            format!("select * from \"{}\" limit 10", reader.table_name());
-                        set_user_input.set(Some(default_query));
-                    }
-                },
-            }
-        },
-        true,
-    );
-
-    Effect::watch(
-        move || (force_update_user_input.get(), user_input.get()),
-        move |(_, user_input_str), _, _| {
-            let Some(user_input_str) = user_input_str else {
+    let on_user_submit_query_call_back = move |query: String| {
+        set_user_input.set(Some(query.clone()));
+        leptos::task::spawn_local(async move {
+            let Some(table) = parquet_table.get() else {
                 return;
             };
-
-            let user_input = user_input_str.clone();
-            leptos::task::spawn_local(async move {
-                let Some(parquet_reader) = parquet_reader.get() else {
+            let sql = match query_input::user_input_to_sql(&query, &table).await {
+                Ok(sql) => sql,
+                Err(e) => {
+                    set_error_message.set(Some(format!("{:#?}", e)));
                     return;
-                };
-                let sql = match query_input::user_input_to_sql(&user_input, &parquet_reader).await {
-                    Ok(response) => response,
+                }
+            };
+
+            match execute_query_inner(&sql).await {
+                Ok((results, execution_plan)) => {
+                    set_error_message.set(None);
+                    set_query_results.update(|r| {
+                        let id = r.len();
+                        r.push(QueryResult::new(id, sql, Arc::new(results), execution_plan));
+                    });
+                }
+                Err(e) => set_error_message.set(Some(format!("{:#?}", e))),
+            }
+        });
+    };
+
+    let on_parquet_read_call_back = move |parquet_info: Result<ParquetInfo>| match parquet_info {
+        Ok(parquet_info) => {
+            leptos::task::spawn_local(async move {
+                match get_parquet_table(parquet_info).await {
+                    Ok(table) => {
+                        let default_query =
+                            format!("select * from \"{}\" limit 10", table.table_name);
+                        set_parquet_table.set(Some(Arc::new(table)));
+                        on_user_submit_query_call_back(default_query);
+                    }
                     Err(e) => {
-                        set_error_message.set(Some(e));
-                        return;
+                        set_error_message.set(Some(format!("{:#?}", e)));
                     }
-                };
-                logging::log!("{}", sql);
-                set_sql_query.set(sql);
+                }
             });
-        },
-        true,
-    );
-
-    Effect::watch(
-        sql_query,
-        move |query, _, _| {
-            let bytes_opt = parquet_table.get();
-            set_error_message.set(None);
-
-            if query.trim().is_empty() {
-                return;
-            }
-
-            if let Some(_parquet_table) = bytes_opt {
-                let query = query.clone();
-                let export_to = export_to.clone();
-
-                leptos::task::spawn_local(async move {
-                    match execute_query_async(&query).await {
-                        Ok((results, physical_plan)) => {
-                            if let Some(export_to) = export_to {
-                                if export_to == "csv" {
-                                    export_to_csv_inner(&results);
-                                } else if export_to == "parquet" {
-                                    export_to_parquet_inner(&results);
-                                }
-                            }
-
-                            set_query_results.update(|r| {
-                                let id = r.len();
-                                if let Some(first_batch) = results.first() {
-                                    let schema = first_batch.schema();
-                                    let mem_table =
-                                        MemTable::try_new(schema, vec![results.clone()]).unwrap();
-                                    SESSION_CTX
-                                        .as_ref()
-                                        .register_table(format!("view_{}", id), Arc::new(mem_table))
-                                        .unwrap();
-                                }
-                                r.push(QueryResult::new(
-                                    id,
-                                    query,
-                                    Arc::new(results),
-                                    physical_plan,
-                                ));
-                            });
-                        }
-                        Err(e) => set_error_message.set(Some(e)),
-                    }
-                });
-            } else {
-                set_error_message.set(Some("No Parquet file loaded.".into()));
-            }
-        },
-        true,
-    );
+        }
+        Err(e) => set_error_message.set(Some(format!("{:#?}", e))),
+    };
 
     view! {
         <div class="container mx-auto px-4 py-8 max-w-6xl">
@@ -394,10 +317,7 @@ fn App() -> impl IntoView {
                 </div>
             </h1>
             <div class="space-y-6">
-                <FileReader
-                    set_error_message=set_error_message
-                    set_parquet_table=set_parquet_table
-                />
+                <ParquetReader read_call_back=on_parquet_read_call_back />
 
                 {move || {
                     error_message
@@ -405,42 +325,31 @@ fn App() -> impl IntoView {
                         .map(|msg| {
                             view! {
                                 <div class="bg-red-50 border-l-4 border-red-500 p-4 my-4">
-                                    <div class="text-red-700">{msg}</div>
-                                    <div class="mt-2 text-sm text-gray-600">
-                                        "Tips:" <ul class="list-disc ml-6 mt-2 space-y-1">
-                                            <li>"Make sure the URL has CORS enabled."</li>
-                                            <li>
-                                                "If query with natural language, make sure to set the Anthropic API key."
-                                            </li>
-                                            <li>
-                                                "I usually download the file and use the file picker above."
-                                            </li>
-                                        </ul>
-                                    </div>
+                                    <pre class="text-red-700 whitespace-pre-wrap break-words">
+                                        {msg}
+                                    </pre>
                                 </div>
                             }
                         })
                 }}
+
+                <div class="border-t border-gray-300 my-4"></div>
+
                 <div class="mt-4">
                     {move || {
                         parquet_table
                             .get()
-                            .map(|_| {
-                                match parquet_reader() {
-                                    Some(info) => {
-                                        if info.info().row_group_count > 0 {
-                                            view! {
-                                                <QueryInput
-                                                    user_input=user_input
-                                                    set_user_input=set_user_input
-                                                />
-                                            }
-                                                .into_any()
-                                        } else {
-                                            ().into_any()
-                                        }
+                            .map(|table| {
+                                if table.display_info.row_group_count > 0 {
+                                    view! {
+                                        <QueryInput
+                                            user_input=user_input
+                                            on_user_submit_query=on_user_submit_query_call_back
+                                        />
                                     }
-                                    None => ().into_any(),
+                                        .into_any()
+                                } else {
+                                    ().into_any()
                                 }
                             })
                     }}
@@ -464,16 +373,16 @@ fn App() -> impl IntoView {
 
                 <div class="mt-8">
                     {move || {
-                        let info = parquet_reader();
-                        match info {
-                            Some(info) => {
+                        let table = parquet_table.get();
+                        match table {
+                            Some(table) => {
                                 view! {
                                     <div class="space-y-6">
                                         <div class="w-full">
-                                            <MetadataSection parquet_reader=info.clone() />
+                                            <MetadataSection parquet_reader=table.clone() />
                                         </div>
                                         <div class="w-full">
-                                            <SchemaSection parquet_reader=info.clone() />
+                                            <SchemaSection parquet_reader=table.clone() />
                                         </div>
                                     </div>
                                 }

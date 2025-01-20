@@ -158,7 +158,7 @@ pub fn QueryResultView(
     let svg_classes = "h-5 w-5";
 
     view! {
-        <div class="p-3 bg-white border border-gray-300 rounded-md hover:shadow-lg transition-shadow duration-200">
+        <div class="p-3 bg-white border border-gray-300 rounded-md hover:shadow-md transition-shadow duration-200">
             <div class="flex items-center mb-4">
                 <div class="w-3/4 font-mono text-sm overflow-auto relative group max-h-[200px]">
                     <pre class="whitespace-pre">

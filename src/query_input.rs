@@ -1,28 +1,23 @@
 use std::sync::Arc;
 
+use anyhow::Result;
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
-use datafusion::{
-    error::DataFusionError,
-    physical_plan::{collect, ExecutionPlan},
-};
+use datafusion::physical_plan::{collect, ExecutionPlan};
+use leptos::wasm_bindgen::{JsCast, JsValue};
 use leptos::{logging, prelude::*};
-use leptos::{
-    reactive::wrappers::write::SignalSetter,
-    wasm_bindgen::{JsCast, JsValue},
-};
 use serde_json::json;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{js_sys, Headers, Request, RequestInit, RequestMode, Response};
 
 use crate::{
     settings::{get_stored_value, ANTHROPIC_API_KEY},
-    ParquetReader, SESSION_CTX,
+    ParquetTable, SESSION_CTX,
 };
 
 pub(crate) async fn execute_query_inner(
     query: &str,
-) -> Result<(Vec<RecordBatch>, Arc<dyn ExecutionPlan>), DataFusionError> {
+) -> Result<(Vec<RecordBatch>, Arc<dyn ExecutionPlan>)> {
     let ctx = SESSION_CTX.as_ref();
     let plan = ctx.sql(query).await?;
 
@@ -39,19 +34,11 @@ pub(crate) async fn execute_query_inner(
 
 #[component]
 pub fn QueryInput(
-    user_input: Memo<Option<String>>,
-    set_user_input: SignalSetter<Option<String>>,
+    user_input: ReadSignal<Option<String>>,
+    on_user_submit_query: impl Fn(String) + 'static + Send + Copy,
 ) -> impl IntoView {
-    let (api_key, _) = signal({
-        let window = web_sys::window().unwrap();
-        window
-            .local_storage()
-            .unwrap()
-            .unwrap()
-            .get_item("claude_api_key")
-            .unwrap()
-            .unwrap_or_default()
-    });
+    let stored_api_key = get_stored_value("claude_api_key", "");
+    let (api_key, _) = signal(stored_api_key);
 
     Effect::new(move |_| {
         if let Some(window) = web_sys::window() {
@@ -70,13 +57,17 @@ pub fn QueryInput(
     let key_down = move |ev: web_sys::KeyboardEvent| {
         if ev.key() == "Enter" {
             let input = input_value.get();
-            set_user_input.set(input.clone());
+            if let Some(input) = input {
+                on_user_submit_query(input);
+            }
         }
     };
 
     let button_press = move |_ev: web_sys::MouseEvent| {
         let input = input_value.get();
-        set_user_input.set(input.clone());
+        if let Some(input) = input {
+            on_user_submit_query(input);
+        }
     };
 
     view! {
@@ -121,10 +112,7 @@ pub fn QueryInput(
     }
 }
 
-pub(crate) async fn user_input_to_sql(
-    input: &str,
-    parquet_reader: &ParquetReader,
-) -> Result<String, String> {
+pub(crate) async fn user_input_to_sql(input: &str, table: &ParquetTable) -> Result<String> {
     // if the input seems to be a SQL query, return it as is
     if input.starts_with("select") || input.starts_with("SELECT") {
         return Ok(input.to_string());
@@ -132,11 +120,10 @@ pub(crate) async fn user_input_to_sql(
 
     // otherwise, treat it as some natural language
 
-    let schema = &parquet_reader.info().schema;
-    let file_name = parquet_reader.table_name();
+    let schema = &table.display_info.schema;
+    let file_name = &table.table_name;
     let api_key = get_stored_value(ANTHROPIC_API_KEY, "");
     let schema_str = schema_to_brief_str(schema);
-    logging::log!("Processing user input: {}", input);
 
     let prompt = format!(
         "Generate a SQL query to answer the following question: {}. You should generate PostgreSQL SQL dialect, all field names and table names should be double quoted, and the output SQL should be executable, be careful about the available columns. The table name is: \"{}\" (without quotes), the schema of the table is: {}.  ",
@@ -144,14 +131,7 @@ pub(crate) async fn user_input_to_sql(
     );
     logging::log!("{}", prompt);
 
-    let sql = match generate_sql_via_claude(&prompt, &api_key).await {
-        Ok(response) => response,
-        Err(e) => {
-            logging::log!("{}", e);
-            let claude_error = format!("Failed to generate SQL through Claude: {}", e);
-            return Err(claude_error);
-        }
-    };
+    let sql = generate_sql_via_claude(&prompt, &api_key).await?;
     logging::log!("{}", sql);
     Ok(sql)
 }
@@ -165,7 +145,7 @@ fn schema_to_brief_str(schema: &SchemaRef) -> String {
 }
 
 // Asynchronous function to call the Claude API
-async fn generate_sql_via_claude(prompt: &str, api_key: &str) -> Result<String, String> {
+async fn generate_sql_via_claude(prompt: &str, api_key: &str) -> Result<String> {
     let url = "https://api.anthropic.com/v1/messages";
 
     let payload = json!({
@@ -183,43 +163,36 @@ async fn generate_sql_via_claude(prompt: &str, api_key: &str) -> Result<String, 
     opts.set_mode(RequestMode::Cors);
 
     // Update headers according to docs
-    let headers = Headers::new().map_err(|e| format!("Failed to create headers: {:?}", e))?;
-    headers
-        .set("content-type", "application/json")
-        .map_err(|e| format!("Failed to set Content-Type: {:?}", e))?;
-    headers
-        .set("anthropic-version", "2023-06-01")
-        .map_err(|e| format!("Failed to set Anthropic version: {:?}", e))?;
-    headers
-        .set("x-api-key", api_key)
-        .map_err(|e| format!("Failed to set API key: {:?}", e))?;
+    let headers = Headers::new().unwrap();
+    headers.set("content-type", "application/json").unwrap();
+    headers.set("anthropic-version", "2023-06-01").unwrap();
+    headers.set("x-api-key", api_key).unwrap();
     headers
         .set("anthropic-dangerous-direct-browser-access", "true")
-        .map_err(|e| format!("Failed to set browser access header: {:?}", e))?;
+        .unwrap();
     opts.set_headers(&headers);
 
     // Set body
-    let body =
-        serde_json::to_string(&payload).map_err(|e| format!("JSON serialization error: {}", e))?;
+    let body = serde_json::to_string(&payload)?;
     opts.set_body(&JsValue::from_str(&body));
 
     // Create Request
     let request = Request::new_with_str_and_init(url, &opts)
-        .map_err(|e| format!("Request creation failed: {:?}", e))?;
+        .map_err(|e| anyhow::anyhow!("Request creation failed: {:?}", e))?;
 
     // Send the request
-    let window = web_sys::window().ok_or("No global `window` exists")?;
+    let window = web_sys::window().ok_or(anyhow::anyhow!("No global `window` exists"))?;
     let response_value = JsFuture::from(window.fetch_with_request(&request))
         .await
-        .map_err(|e| format!("Fetch error: {:?}", e))?;
+        .map_err(|e| anyhow::anyhow!("Fetch error: {:?}", e))?;
 
     // Convert the response to a WebSys Response object
     let response: Response = response_value
         .dyn_into()
-        .map_err(|e| format!("Response casting failed: {:?}", e))?;
+        .map_err(|e| anyhow::anyhow!("Response casting failed: {:?}", e))?;
 
     if !response.ok() {
-        return Err(format!(
+        return Err(anyhow::anyhow!(
             "Network response was not ok: {}",
             response.status()
         ));
@@ -229,19 +202,18 @@ async fn generate_sql_via_claude(prompt: &str, api_key: &str) -> Result<String, 
     let json = JsFuture::from(
         response
             .json()
-            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+            .map_err(|e| anyhow::anyhow!("Failed to parse JSON: {:?}", e))?,
     )
     .await
-    .map_err(|e| format!("JSON parsing error: {:?}", e))?;
+    .map_err(|e| anyhow::anyhow!("JSON parsing error: {:?}", e))?;
 
     // Simplified response parsing
     let json_value: serde_json::Value = serde_json::from_str(
         &js_sys::JSON::stringify(&json)
-            .map_err(|e| format!("Failed to stringify JSON: {:?}", e))?
+            .map_err(|e| anyhow::anyhow!("Failed to stringify JSON: {:?}", e))?
             .as_string()
-            .ok_or("Failed to convert to string")?,
-    )
-    .map_err(|e| format!("Failed to parse JSON value: {:?}", e))?;
+            .ok_or(anyhow::anyhow!("Failed to convert to string"))?,
+    )?;
 
     // Extract the SQL directly from the content
     let sql = json_value
@@ -249,7 +221,7 @@ async fn generate_sql_via_claude(prompt: &str, api_key: &str) -> Result<String, 
         .and_then(|c| c.get(0))
         .and_then(|c| c.get("text"))
         .and_then(|t| t.as_str())
-        .ok_or("Failed to extract SQL from response")?
+        .ok_or(anyhow::anyhow!("Failed to extract SQL from response"))?
         .trim()
         .to_string();
 
