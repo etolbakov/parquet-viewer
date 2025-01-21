@@ -1,9 +1,10 @@
-use crate::execute_query_async;
+use crate::{execute_query_inner, ParquetTable};
 use arrow_array::cast::AsArray;
 use arrow_array::types::Int64Type;
 use leptos::{logging, prelude::*};
 use std::clone::Clone;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq)]
 struct ColumnData {
@@ -28,8 +29,8 @@ enum SortField {
 }
 
 #[component]
-pub fn SchemaSection(parquet_reader: super::ParquetReader) -> impl IntoView {
-    let parquet_info = parquet_reader.info().clone();
+pub fn SchemaSection(parquet_reader: Arc<ParquetTable>) -> impl IntoView {
+    let parquet_info = parquet_reader.display_info.clone();
     let schema = parquet_info.schema.clone();
     let metadata = parquet_info.metadata.clone();
     let mut column_info = vec![
@@ -59,7 +60,7 @@ pub fn SchemaSection(parquet_reader: super::ParquetReader) -> impl IntoView {
     let (sort_field, set_sort_field) = signal(SortField::Id);
     let (sort_ascending, set_sort_ascending) = signal(true);
 
-    let table_name = Memo::new(move |_| parquet_reader.clone().parquet_table.table_name);
+    let table_name = Memo::new(move |_| parquet_reader.table_name.clone());
     // Transform the data into ColumnData structs
     let column_data = Memo::new(move |_| {
         let mut data: Vec<ColumnData> = schema
@@ -141,7 +142,7 @@ pub fn SchemaSection(parquet_reader: super::ParquetReader) -> impl IntoView {
             column_name, table_name
         );
         leptos::task::spawn_local(async move {
-            match execute_query_async(&distinct_query).await {
+            match execute_query_inner(&distinct_query).await {
                 Ok((results, _)) => {
                     if let Some(first_batch) = results.first() {
                         let distinct_value =
@@ -240,12 +241,12 @@ pub fn SchemaSection(parquet_reader: super::ParquetReader) -> impl IntoView {
                                         <td class="px-4 py-2 text-gray-500">
                                             <button
                                                 disabled=move || {
-                                                        distinct_values.get().into_iter().filter(|(id,v)| id == &col.id && v != "👁️‍🗨").count() != 0
+                                                        distinct_values.get().get(&col.id).unwrap_or(&String::from("Not Available")).clone() != "👁️‍🗨"
                                                 }
                                                 on:click=move |_| {
                                                 calculate_distinct(set_distinct_values, col.id, &col.name.clone(), &table_name.get());
                                             }>
-                                                {move || distinct_values.get().into_iter().filter(|(id,_)| id == &col.id).next().map(|(_,text)| text.clone())}
+                                                {move || distinct_values.get().get(&col.id).unwrap_or(&String::from("Not Available")).clone()}
                                             </button>
                                         </td>
                                     </tr>
