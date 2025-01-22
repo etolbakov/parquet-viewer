@@ -214,15 +214,18 @@ pub fn SchemaSection(parquet_reader: Arc<ParquetTable>) -> impl IntoView {
                 </thead>
                 <tbody>
                     {move || {
-                        let (distinct_values, set_distinct_values) = signal(HashMap::<usize, String>::new());
+                        let (distinct_values, set_distinct_values) = signal(
+                            HashMap::<usize, String>::new(),
+                        );
                         column_data
                             .get()
                             .into_iter()
                             .map(|col| {
+                                set_distinct_values
+                                    .update(|texts| {
+                                        texts.insert(col.id, String::from("👁️‍🗨"));
+                                    });
 
-                                set_distinct_values.update(|texts| {
-                                    texts.insert(col.id, String::from("👁️‍🗨"));
-                                });
                                 view! {
                                     <tr class="hover:bg-gray-50">
                                         <td class="px-4 py-2 text-gray-700">{col.id}</td>
@@ -241,12 +244,28 @@ pub fn SchemaSection(parquet_reader: Arc<ParquetTable>) -> impl IntoView {
                                         <td class="px-4 py-2 text-gray-500">
                                             <button
                                                 disabled=move || {
-                                                        distinct_values.get().get(&col.id).unwrap_or(&String::from("Not Available")).clone() != "👁️‍🗨"
+                                                    distinct_values
+                                                        .get()
+                                                        .get(&col.id)
+                                                        .unwrap_or(&String::from("Not Available"))
+                                                        .clone() != "👁️‍🗨"
                                                 }
                                                 on:click=move |_| {
-                                                calculate_distinct(set_distinct_values, col.id, &col.name.clone(), &table_name.get());
-                                            }>
-                                                {move || distinct_values.get().get(&col.id).unwrap_or(&String::from("Not Available")).clone()}
+                                                    calculate_distinct(
+                                                        set_distinct_values,
+                                                        col.id,
+                                                        &col.name.clone(),
+                                                        &table_name.get(),
+                                                    );
+                                                }
+                                            >
+                                                {move || {
+                                                    distinct_values
+                                                        .get()
+                                                        .get(&col.id)
+                                                        .unwrap_or(&String::from("Not Available"))
+                                                        .clone()
+                                                }}
                                             </button>
                                         </td>
                                     </tr>
