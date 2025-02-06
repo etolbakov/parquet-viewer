@@ -36,6 +36,8 @@ It compiles [Parquet](https://github.com/apache/arrow-rs), [Arrow](https://githu
 Checkout the awesome [Leptos](https://github.com/leptos-rs/leptos) framework.
 
 ```bash
+cargo install trunk --locked
+
 trunk serve --open
 
 trunk build --release
