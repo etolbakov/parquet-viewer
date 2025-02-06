@@ -3,7 +3,6 @@ use std::sync::{Arc, LazyLock};
 use anyhow::Result;
 use datafusion::execution::object_store::ObjectStoreUrl;
 use leptos::prelude::*;
-use leptos::wasm_bindgen::{prelude::Closure, JsCast};
 use leptos_router::hooks::{query_signal, use_query_map};
 use object_store::memory::InMemory;
 use object_store::path::Path;
@@ -11,6 +10,7 @@ use object_store::{ObjectStore, PutPayload};
 use object_store_opendal::OpendalStore;
 use opendal::{services::Http, services::S3, Operator};
 use url::Url;
+use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys;
 
 use crate::object_store_cache::ObjectStoreCache;
@@ -160,36 +160,38 @@ fn FileReader(
         let input: web_sys::HtmlInputElement = event_target(&ev);
         let files = input.files().unwrap();
         let file = files.get(0).unwrap();
-
-        let file_reader = web_sys::FileReader::new().unwrap();
-        let file_reader_clone = file_reader.clone();
-
         let table_name = file.name();
 
-        let onload = Closure::wrap(Box::new(move |_: web_sys::Event| {
-            let table_name = table_name.clone();
-            let result = file_reader_clone.result().unwrap();
-            let array_buffer = result.dyn_into::<js_sys::ArrayBuffer>().unwrap();
-            let uint8_array = js_sys::Uint8Array::new(&array_buffer);
-            let bytes = bytes::Bytes::from(uint8_array.to_vec());
-            leptos::task::spawn_local(async move {
-                let object_store = INMEMORY_STORE.clone();
-                let path = Path::parse(&table_name).unwrap();
-                let payload = PutPayload::from_bytes(bytes.clone());
-                object_store.put(&path, payload).await.unwrap();
-                let object_store_url = ObjectStoreUrl::parse("mem://").unwrap();
-                read_call_back(Ok(ParquetInfo {
+        leptos::task::spawn_local(async move {
+            let result = async {
+                let array_buffer = JsFuture::from(file.array_buffer())
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to read file: {:?}", e))?;
+
+                let uint8_array = js_sys::Uint8Array::new(&array_buffer);
+                let bytes = bytes::Bytes::from(uint8_array.to_vec());
+
+                let path = Path::parse(&table_name)?;
+
+                let (object_store, object_store_url) =
+                    (INMEMORY_STORE.clone(), ObjectStoreUrl::parse("mem://")?);
+
+                object_store
+                    .put(&path, PutPayload::from_bytes(bytes))
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Store operation failed: {:?}", e))?;
+
+                Ok(ParquetInfo {
                     table_name: table_name.clone(),
-                    path: Path::parse(table_name).unwrap(),
+                    path,
                     object_store_url,
                     object_store,
-                }));
-            });
-        }) as Box<dyn FnMut(_)>);
+                })
+            }
+            .await;
 
-        file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
-        file_reader.read_as_array_buffer(&file).unwrap();
-        onload.forget();
+            read_call_back(result);
+        });
     };
 
     view! {
@@ -218,7 +220,7 @@ fn read_from_url(url_str: &str) -> Result<ParquetInfo> {
 
     let table_name = path
         .split('/')
-        .last()
+        .next_back()
         .unwrap_or("uploaded.parquet")
         .to_string();
 
@@ -300,7 +302,7 @@ fn read_from_s3(s3_bucket: &str, s3_region: &str, s3_file_path: &str) -> Result<
     }
     let file_name = s3_file_path
         .split('/')
-        .last()
+        .next_back()
         .unwrap_or("uploaded.parquet")
         .to_string();
 

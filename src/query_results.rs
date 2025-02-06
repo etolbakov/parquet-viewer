@@ -147,6 +147,27 @@ pub fn QueryResultView(
     let sql = result.sql_query.clone();
     let sql_clone = sql.clone();
     let id = result.id();
+    let total_rows = result.query_result[0].num_rows();
+    let (current_page, set_current_page) = signal(1);
+    let visible_rows = move || (current_page.get() * 20).min(total_rows);
+    let table_container = NodeRef::<leptos::html::Div>::new();
+
+    let handle_scroll = move |ev: web_sys::Event| {
+        let target = ev.target().unwrap();
+        let container = target.dyn_into::<web_sys::HtmlElement>().unwrap();
+
+        let scroll_top = container.scroll_top();
+        let scroll_height = container.scroll_height();
+        let client_height = container.client_height();
+
+        if scroll_top >= scroll_height - client_height {
+            // Only load more if we have more rows to show
+            if visible_rows() < total_rows {
+                logging::log!("current_page: {}", current_page.get());
+                set_current_page.update(|page| *page += 1);
+            }
+        }
+    };
 
     Effect::new(move |_| {
         let _window = web_sys::window().unwrap();
@@ -317,7 +338,7 @@ pub fn QueryResultView(
                     })
             }}
 
-            <div class="max-h-[32rem] overflow-auto relative">
+            <div class="max-h-[32rem] overflow-auto relative" node_ref=table_container on:scroll=handle_scroll>
                 <table class="min-w-full bg-white table-fixed">
                     <thead class="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(229,231,235)]">
                         <tr class="border-b border-gray-200">
@@ -345,30 +366,27 @@ pub fn QueryResultView(
                         </tr>
                     </thead>
                     <tbody>
-                        {(0..result.query_result[0].num_rows())
-                            .map(|row_idx| {
+                        <For
+                            each = move || (0..visible_rows())
+                            key = |row_idx| *row_idx
+                            children = move |row_idx| {
                                 view! {
                                     <tr class="hover:bg-gray-50">
                                         {(0..result.query_result[0].num_columns())
                                             .map(|col_idx| {
                                                 let column = result.query_result[0].column(col_idx);
-                                                let cell_value = if column.is_null(row_idx) {
-                                                    "NULL".to_string()
-                                                } else {
-                                                    column.as_ref().value_to_string(row_idx)
-                                                };
-
+                                                let cell_value = column.as_ref().value_to_string(row_idx);
                                                 view! {
                                                     <td class="px-4 py-1 w-48 min-w-48 leading-tight text-gray-700">
-                                                        <div title=cell_value.clone()>{cell_value.clone()}</div>
+                                                        {cell_value}
                                                     </td>
                                                 }
                                             })
                                             .collect::<Vec<_>>()}
                                     </tr>
                                 }
-                            })
-                            .collect::<Vec<_>>()}
+                            }
+                        />
                     </tbody>
                 </table>
             </div>

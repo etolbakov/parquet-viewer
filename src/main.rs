@@ -247,11 +247,14 @@ fn App() -> impl IntoView {
 
             match execute_query_inner(&sql).await {
                 Ok((results, execution_plan)) => {
+                    let row_cnt = results.iter().map(|r| r.num_rows()).sum::<usize>();
+                    logging::log!("finished executing: {:?}, row_cnt: {}", sql, row_cnt);
                     set_error_message.set(None);
                     set_query_results.update(|r| {
                         let id = r.len();
                         r.push(QueryResult::new(id, sql, Arc::new(results), execution_plan));
                     });
+                    logging::log!("finished updating results");
                 }
                 Err(e) => set_error_message.set(Some(format!("{:#?}", e))),
             }
